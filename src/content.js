@@ -2073,19 +2073,16 @@
       } catch {}
       return null;
     }
-    const form = element.closest('form, [role="form"], .v-form');
-    if (form?.querySelector(FIELD_SELECTOR)) return { kind: 'form', element: form };
-    for (let node = element.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
-      if (node.matches('.v-input, .v-field, [role="combobox"]')) continue;
-      const count = node.querySelectorAll(FIELD_SELECTOR).length;
-      if (count >= 3 || (count >= 2 && node.matches('section, article, main, [role="dialog"]'))) return { kind: 'form', element: node };
-    }
     const field = element.closest('textarea, input, [contenteditable="true"], [contenteditable="plaintext-only"]');
     if (field && !field.disabled && !field.readOnly && !field.closest('[inert], [aria-disabled="true"]') &&
       (field.isContentEditable || field.tagName === 'TEXTAREA' || ['text', 'search', 'email', 'tel', 'url', ''].includes(field.type))) {
       return { kind: 'text', element: field };
     }
     if (element.closest('canvas, iframe')) return null;
+    const control = element.closest(FIELD_SELECTOR);
+    if (control && !control.closest('[inert], [aria-disabled="true"]')) return { kind: 'form', element: document, elements: new Set([control]) };
+    const form = element.closest('form, [role="form"], .v-form');
+    if (form?.querySelector(FIELD_SELECTOR)) return { kind: 'form', element: form };
     for (let node = element; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
       const fields = node.querySelectorAll(FIELD_SELECTOR);
       if (fields.length >= 2 && (node.matches('section, article, main, [role="dialog"]') || fields.length >= 3)) return { kind: 'form', element: node };

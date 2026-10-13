@@ -73,12 +73,12 @@ test('seleccionar el fondo de un formulario limita la interpretación a ese form
   assert.equal(s.starts(), 1);
 });
 
-test('hacer clic en un campo dentro de un formulario elige el formulario completo', () => {
+test('hacer clic en un campo dentro de un formulario elige solo ese campo', () => {
   const s = setup(), input = new s.Input('');
   const form = { querySelector: () => input };
-  input.closest = selector => selector.startsWith('form') ? form : input;
-  assert.equal(s.context.voiceDestinationFor(input).element, form);
-  assert.equal(s.context.voiceDestinationFor(input).kind, 'form');
+  input.closest = selector => selector.startsWith('form') ? form : selector.startsWith('textarea') ? input : null;
+  assert.equal(s.context.voiceDestinationFor(input).element, input);
+  assert.equal(s.context.voiceDestinationFor(input).kind, 'text');
 });
 
 test('el rectángulo incluye únicamente los campos visibles que se superponen al área', () => {
