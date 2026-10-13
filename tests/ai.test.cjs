@@ -93,6 +93,15 @@ test('no acepta una respuesta que omite la correccion del texto', async () => {
   await assert.rejects(ai.interpret(local, 'texto reconocido', []), /texto corregido requerido \(corrected_text\)/);
 });
 
+test('normaliza booleanos JSON para casillas y números finitos sin inventar valores', async () => {
+  const fields = [{ id: 'awake', kind: 'checkbox' }, { id: 'weight', kind: 'text' }];
+  const actions = [{ field_id: 'awake', value: true, evidence: 'Consciente: sí', needs_confirmation: false }, { field_id: 'weight', value: 68, evidence: 'Peso: 68', needs_confirmation: false }];
+  const ai = setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ actions, corrected_text: 'Consciente: sí. Peso: 68.' }) } }] }) }));
+  const result = await ai.interpret(local, 'Consciente: sí. Peso: 68.', fields);
+  assert.equal(result.actions[0].value, 'true');
+  assert.equal(result.actions[1].value, '68');
+});
+
 test('la evidencia admite saltos de línea como espacios pero rechaza texto inventado', async () => {
   const fields = [{ id: 'evolution', label: 'Evolución', kind: 'text' }];
   const aiFor = evidence => setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ corrected_text: 'Texto ficticio.', actions: [{ field_id: 'evolution', value: 'Texto ficticio.', evidence, needs_confirmation: false }] }) } }] }) }));

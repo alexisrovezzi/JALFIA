@@ -98,6 +98,8 @@
       if (!field) throw new Error('La IA propuso un cambio para un identificador de campo que no existe en la selección. Vuelve a interpretar.');
       const label = field.label || field.id;
       if (seen.has(action.field_id)) throw new Error(`La IA propuso más de un cambio para «${label}». Vuelve a interpretar.`);
+      if (['switch', 'checkbox', 'radio'].includes(field.kind) && typeof action.value === 'boolean') action.value = String(action.value);
+      if (typeof action.value === 'number' && Number.isFinite(action.value)) action.value = String(action.value);
       if (typeof action.value !== 'string') throw new Error(`La IA devolvió un valor con formato inválido para «${label}».`);
       if (field.kind === 'date') {
         const localized = action.value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
