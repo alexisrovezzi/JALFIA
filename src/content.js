@@ -2078,6 +2078,12 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
+      <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
+      <div class="setting setting-heading"><label for="jalfia-dark">Modo oscuro</label><input id="jalfia-dark" type="checkbox" role="switch" data-action="dark-mode" ${state.darkMode ? 'checked' : ''}></div>
+      <div class="setting">
+        <div class="setting-heading"><label for="jalfia-opacity">Opacidad</label><output for="jalfia-opacity" data-opacity-value>${Math.round(state.opacity * 100)}%</output></div>
+        <input id="jalfia-opacity" type="range" min="55" max="100" value="${Math.round(state.opacity * 100)}" data-action="opacity">
+      </div>
       <div class="setting"><h2>Memoria de esta página</h2>
         <small>${fields.length ? `${fields.length} campos · ${fields.filter(field => field.strategy).length} estrategias comprobadas · ${useful.length} documentos con campos` : 'Todavía no hay campos recordados en esta página.'}</small>
         <small>Solo estructura y funcionamiento. No guarda valores, dictados ni opciones.</small>
@@ -2093,12 +2099,6 @@
         <small>El borrado incluye la pantalla principal y sus iframes disponibles.</small>
       </div>
       <div class="setting"><label for="jalfia-frame-scope">Documentos a analizar</label><select id="jalfia-frame-scope" data-action="frame-scope"><option value="all" ${state.frameScope === 'all' ? 'selected' : ''}>Página e iframes disponibles</option><option value="top" ${state.frameScope === 'top' ? 'selected' : ''}>Solo página principal</option>${state.frames.map(frame => `<option value="${frame.frameId}" ${state.frameScope === String(frame.frameId) ? 'selected' : ''}>${escapeHtml(frame.title)} (iframe ${frame.frameId})</option>`).join('')}</select></div>
-      <div class="setting">
-        <div class="setting-heading"><label for="jalfia-opacity">Opacidad</label><output for="jalfia-opacity" data-opacity-value>${Math.round(state.opacity * 100)}%</output></div>
-        <input id="jalfia-opacity" type="range" min="55" max="100" value="${Math.round(state.opacity * 100)}" data-action="opacity">
-      </div>
-      <div class="setting setting-heading"><label for="jalfia-dark">Modo oscuro</label><input id="jalfia-dark" type="checkbox" role="switch" data-action="dark-mode" ${state.darkMode ? 'checked' : ''}></div>
-      <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
     </form>`;
   }
 
