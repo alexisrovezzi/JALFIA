@@ -320,7 +320,13 @@
 
   function labelFromWrapper(element) {
     const label = element.closest('label');
-    return label ? normalizeText(label.innerText || label.textContent) : '';
+    if (label) return normalizeText(label.innerText || label.textContent);
+    let container = element.parentElement;
+    for (let depth = 0; container && depth < 3; depth++, container = container.parentElement) {
+      const labels = container.querySelectorAll('label:not([for]), label[for=""]');
+      if (labels.length === 1 && container.querySelectorAll(FIELD_SELECTOR).length === 1) return normalizeText(labels[0].innerText || labels[0].textContent);
+    }
+    return '';
   }
 
   function labelFromAria(element) {
