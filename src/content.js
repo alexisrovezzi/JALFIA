@@ -955,7 +955,8 @@
     updateVoiceButtons();
     if (!fieldId) {
       state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceActions = [];
-      updateGlobalMicrophone();
+      state.voiceActionIndex = 0; state.voicePreview = false;
+      renderPanel();
     }
     showStatus('Escuchando... Pulsa detener para terminar.');
 
@@ -2119,6 +2120,7 @@
     if (!button) return;
     button.innerHTML = state.listening ? stopIcon() : microphoneIcon();
     button.setAttribute('aria-label', state.listening ? 'Detener y procesar dictado' : 'Comenzar dictado');
+    button.title = state.listening ? 'Detener y procesar dictado' : state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado';
     button.classList.toggle('recording', state.listening);
     const label = state.shadow.querySelector('[data-voice-label]');
     if (label) label.textContent = state.voiceBusy ? 'Interpretando…' : state.listening ? 'Escuchando… Tocá para terminar' : 'Tocá para hablar';
@@ -2138,7 +2140,8 @@
       ${action.result ? `<span>${escapeHtml(action.result)}</span>` : ''}
     </article>`; }).join('');
     return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
-      ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : `<button class="global-mic" type="button" data-action="global-voice" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong><small>${visibleFields().length} campos detectados</small>`}
+      <button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>
+      ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : `<small>${visibleFields().length} campos detectados</small>`}
       ${state.voiceShowText ? `<div class="recognized-text"><strong>Texto reconocido</strong><p data-transcript>${escapeHtml(state.voiceTranscript || 'Todavía no hay texto reconocido.')}</p>${state.voiceCorrectedText ? `<strong>Texto corregido por IA</strong><p>${escapeHtml(state.voiceCorrectedText)}</p>` : ''}</div>` : ''}
       </div>
       ${state.voiceActions.length ? `<div class="footer ${state.voicePreview ? '' : 'footer-navigation'}">
@@ -2147,7 +2150,6 @@
       <div class="voice-toolbar">
         <button type="button" data-action="interpret-voice" title="Interpretar nuevamente" aria-label="Interpretar nuevamente" ${!state.voiceTranscript || state.listening || state.voiceBusy ? 'disabled' : ''}>${refreshIcon()}</button>
         <button type="button" data-action="manual-mode" title="Completar manualmente" aria-label="Completar manualmente" ${state.voiceBusy || state.listening ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"></path></svg></button>
-        <button type="button" data-action="new-voice" title="Nuevo dictado" aria-label="Nuevo dictado" ${state.voiceBusy || state.listening ? 'disabled' : ''}>${microphoneIcon()}</button>
         <button type="button" data-action="show-recognized" title="Ver texto reconocido" aria-label="Ver texto reconocido" aria-pressed="${state.voiceShowText}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
       </div>
     </section>`;
@@ -2675,7 +2677,6 @@
     });
     state.shadow.querySelector('[data-action="interpret-voice"]')?.addEventListener('click', processVoice);
     state.shadow.querySelector('[data-action="apply-voice"]')?.addEventListener('click', applyVoiceActions);
-    state.shadow.querySelector('[data-action="new-voice"]')?.addEventListener('click', () => { state.voiceActions = []; state.voiceActionIndex = 0; state.voicePreview = false; state.voiceTranscript = ''; state.voiceCorrectedText = ''; renderPanel(); });
     state.shadow.querySelector('[data-action="show-recognized"]')?.addEventListener('click', () => { state.voiceShowText = !state.voiceShowText; renderPanel(); });
     state.shadow.querySelector('[data-action="manual-mode"]')?.addEventListener('click', () => { state.voiceMode = false; renderPanel(); });
     state.shadow.querySelector('[data-action="voice-mode"]')?.addEventListener('click', () => { state.voiceMode = true; state.previewMode = false; renderPanel(); });

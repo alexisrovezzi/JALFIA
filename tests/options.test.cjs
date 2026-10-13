@@ -199,7 +199,8 @@ test('el modo voz agrupa acciones en una barra y oculta el texto hasta solicitar
   vm.runInContext(source.slice(source.indexOf('  function renderVoice('), source.indexOf('  async function processVoice(')), s.context);
   let html = s.context.renderVoice();
   assert.match(html, /voice-toolbar/); assert.doesNotMatch(html, /<p data-transcript>/);
-  for (const action of ['interpret-voice', 'manual-mode', 'new-voice', 'show-recognized']) assert.ok(html.includes(`data-action="${action}"`));
+  for (const action of ['interpret-voice', 'manual-mode', 'global-voice', 'show-recognized']) assert.ok(html.includes(`data-action="${action}"`));
+  assert.ok(!html.includes('data-action="new-voice"'));
   s.state.voiceShowText = true; html = s.context.renderVoice();
   assert.match(html, /texto original/); assert.match(html, /Texto corregido\./);
 });
@@ -211,6 +212,7 @@ test('los cambios de voz se muestran uno por uno y solo se aplican desde la vist
   Object.assign(s.context, { visibleFields: () => [], escapeHtml: value => String(value), microphoneIcon: () => '', refreshIcon: () => '' });
   vm.runInContext(source.slice(source.indexOf('  function renderVoice('), source.indexOf('  async function processVoice(')), s.context);
   let html = s.context.renderVoice();
+  assert.match(html, /data-action="global-voice"/);
   assert.match(html, /Ubicación/); assert.doesNotMatch(html, /Detalle/);
   assert.match(html, /data-action="prev-voice"/); assert.match(html, /data-action="next-voice"/);
   assert.doesNotMatch(html, /data-action="apply-voice"/);
