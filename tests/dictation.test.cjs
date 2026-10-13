@@ -17,10 +17,10 @@ function setup() {
   const context = {
     location: { hostname: 'example.com', pathname: '/form', origin: 'https://example.com', href: 'https://example.com/form' },
     URL, AbortSignal,
-    state, FIELD_SELECTOR: 'input', Element: Input, HTMLInputElement: Input, HTMLTextAreaElement: Input,
+    state, PANEL_ID: 'jalfia-assistant-panel', FIELD_SELECTOR: 'input', Element: Input, HTMLInputElement: Input, HTMLTextAreaElement: Input,
     document: { body: {}, documentElement: {} }, window: {
       addEventListener: (name, handler) => listeners.set(name, handler),
-      removeEventListener: name => listeners.delete(name)
+      removeEventListener: (name, handler) => { if (listeners.get(name) === handler) listeners.delete(name); }
     },
     inferLabel: () => 'Detalle', isInsidePanel: () => false, renderPanel() {},
     showStatus: message => statuses.push(message), startVoiceRecognition: () => { starts++; },
@@ -71,6 +71,68 @@ test('seleccionar el fondo de un formulario limita la interpretación a ese form
   assert.equal(s.state.scopeRoot, form);
   assert.equal(s.state.frameScope, 'top');
   assert.equal(s.starts(), 1);
+});
+
+test('hacer clic en un campo dentro de un formulario elige el formulario completo', () => {
+  const s = setup(), input = new s.Input('');
+  const form = { querySelector: () => input };
+  input.closest = selector => selector.startsWith('form') ? form : input;
+  assert.equal(s.context.voiceDestinationFor(input).element, form);
+  assert.equal(s.context.voiceDestinationFor(input).kind, 'form');
+});
+
+test('el rectángulo incluye únicamente los campos visibles que se superponen al área', () => {
+  const s = setup();
+  const input = (left, visible = true) => {
+    const element = new s.Input('');
+    element.visible = visible;
+    element.getBoundingClientRect = () => ({ left, right: left + 20, top: 10, bottom: 30, width: 20, height: 20 });
+    return element;
+  };
+  const a = input(10), b = input(40), outside = input(150), hidden = input(15, false);
+  s.context.document.querySelectorAll = () => [a, b, outside, hidden];
+  s.context.isVisible = element => element.visible;
+  const result = s.context.voiceDestinationInRect({ left: 0, top: 0, right: 100, bottom: 50 });
+  assert.equal(result.kind, 'form');
+  assert.deepEqual(Array.from(result.elements), [a, b]);
+  const single = s.context.voiceDestinationInRect({ left: 0, top: 0, right: 35, bottom: 50 });
+  assert.equal(single.kind, 'text');
+  assert.equal(single.element, a);
+});
+
+test('el glow se anima al señalar y se cancela al salir de la selección', () => {
+  const s = setup(), input = new s.Input(''); let animated = false, cancelled = false;
+  input.animate = () => { animated = true; return { cancel() { cancelled = true; } }; };
+  s.context.chooseVoiceDestination();
+  s.listeners.get('pointermove')({ target: input });
+  assert.equal(animated, true);
+  s.state.cancelScopeSelection();
+  assert.equal(cancelled, true);
+  assert.equal(s.listeners.size, 0);
+});
+
+test('arrastrar delimita campos y no dispara el clic posterior del formulario', () => {
+  const s = setup(), a = new s.Input(''), b = new s.Input('');
+  a.getBoundingClientRect = () => ({ left: 10, top: 10, right: 25, bottom: 25, width: 15, height: 15 });
+  b.getBoundingClientRect = () => ({ left: 40, top: 10, right: 55, bottom: 25, width: 15, height: 15 });
+  s.context.document.querySelectorAll = () => [a, b];
+  s.context.document.createElement = () => ({ style: {}, remove() {} });
+  s.context.document.documentElement.appendChild = () => {};
+  s.context.document.isConnected = true;
+  s.context.isVisible = () => true;
+  const deferred = []; s.context.window.setTimeout = fn => deferred.push(fn);
+  s.context.chooseVoiceDestination();
+  const event = (x, y) => ({ target: a, button: 0, clientX: x, clientY: y, preventDefault() {}, stopImmediatePropagation() {} });
+  s.listeners.get('pointerdown')(event(0, 0));
+  s.listeners.get('pointermove')(event(100, 50));
+  s.listeners.get('pointerup')(event(100, 50));
+  assert.deepEqual(Array.from(s.state.scopeElements), [a, b]);
+  assert.equal(s.starts(), 1);
+  let prevented = false;
+  s.listeners.get('click')({ preventDefault() { prevented = true; }, stopImmediatePropagation() {} });
+  assert.equal(prevented, true);
+  deferred.forEach(fn => fn());
+  assert.equal(s.listeners.size, 0);
 });
 
 test('el dictado conserva el texto fuera de la selección y usa el setter nativo', () => {
