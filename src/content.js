@@ -2072,6 +2072,15 @@
   }
 
   function voiceDestinationFor(element) {
+    const docsPage = location.hostname === 'docs.google.com' && location.pathname.startsWith('/document/')
+      ? element.closest('.kix-page-paginated, .kix-rotatingtilemanager-content') : null;
+    if (docsPage) {
+      try {
+        const editor = document.querySelector('iframe.docs-texteventtarget-iframe')?.contentDocument?.querySelector('[contenteditable="true"][role="textbox"]');
+        if (editor) return { kind: 'text', element: docsPage, editor, googleDocs: true };
+      } catch {}
+      return null;
+    }
     const field = element.closest('textarea, input, [contenteditable="true"], [contenteditable="plaintext-only"]');
     if (field && !field.disabled && !field.readOnly && !field.closest('[inert], [aria-disabled="true"]') &&
       (field.isContentEditable || field.tagName === 'TEXTAREA' || ['text', 'search', 'email', 'tel', 'url', ''].includes(field.type))) {
@@ -2131,10 +2140,18 @@
     };
     const select = event => {
       if (!(event.target instanceof Element) || isInsidePanel(event.target)) return;
-      event.preventDefault(); event.stopImmediatePropagation();
       const destination = voiceDestinationFor(event.target);
+      if (!destination?.googleDocs) { event.preventDefault(); event.stopImmediatePropagation(); }
       if (!destination) { showStatus('Este lugar no admite dictado directo todavía. Elegí un campo editable o un formulario.'); return; }
       cleanup();
+      if (destination.googleDocs) {
+        // Docs debe recibir el clic para colocar su propio cursor en la hoja.
+        window.setTimeout(() => {
+          state.voiceTarget = { kind: 'text', googleDocs: true, element: destination.editor, label: 'Documento de Google Docs', url: location.href };
+          state.voiceSubmit = false; startVoiceRecognition();
+        }, 0);
+        return;
+      }
       if (destination.kind === 'text') {
         state.voiceTarget = captureDictationTarget(destination.element);
       } else {
@@ -2173,6 +2190,41 @@
       try { element.setSelectionRange(target.start + text.length, target.start + text.length); } catch {}
     }
     return { ok: true };
+  }
+
+  async function readGoogleDocsText(target) {
+    const url = new URL(target.url);
+    const match = url.pathname.match(/^\/document\/d\/([^/]+)\/edit/);
+    if (!match || url.origin !== location.origin || target.url !== location.href) throw new Error('El documento cambió. Seleccionalo de nuevo.');
+    const exportUrl = new URL(`/document/d/${match[1]}/export`, url.origin);
+    exportUrl.searchParams.set('format', 'txt');
+    if (url.searchParams.has('tab')) exportUrl.searchParams.set('tab', url.searchParams.get('tab'));
+    const response = await fetch(exportUrl.href, { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    if (!response.ok || !response.headers.get('content-type')?.includes('text/plain')) throw new Error('No pude leer el documento para comprobar la inserción. No se envió el dictado.');
+    return (await response.text()).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  }
+
+  async function insertGoogleDocsDictation(target, text) {
+    if (!target.element.isConnected || target.url !== location.href) return { ok: false, reason: 'El editor cambió. Seleccionalo de nuevo.' };
+    if (target.sent) return { ok: false, reason: 'Este dictado ya fue enviado. Revisá el documento antes de volver a grabar para evitar duplicados.' };
+    let before;
+    try { before = await readGoogleDocsText(target); }
+    catch (error) { return { ok: false, reason: error.message }; }
+    const editorDocument = target.element.ownerDocument;
+    const editorWindow = editorDocument.defaultView;
+    try {
+      target.element.focus({ preventScroll: true });
+      const data = new editorWindow.DataTransfer(); data.setData('text/plain', text);
+      target.sent = true;
+      target.element.dispatchEvent(new editorWindow.ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+      // Verificar el documento guardado, no el contenido del iframe auxiliar.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await wait(1000);
+        const after = await readGoogleDocsText(target);
+        if (after !== before && after.includes(text.replace(/\r\n/g, '\n'))) return { ok: true };
+      }
+    } catch {}
+    return { ok: false, reason: 'No pude confirmar la inserción en Google Docs. Revisá la hoja: no se reenviará este dictado automáticamente.' };
   }
 
   function renderSettings() {
@@ -2294,7 +2346,11 @@
     const actions = state.voiceActions.filter(action => action.include);
     if (!actions.length) { showStatus('Selecciona al menos un cambio.'); return; }
     if (state.voiceTarget?.kind === 'text') {
-      const result = insertDictation(state.voiceTarget, actions[0].value);
+      state.voiceBusy = true;
+      let result;
+      try { result = state.voiceTarget.googleDocs ? await insertGoogleDocsDictation(state.voiceTarget, actions[0].value) : insertDictation(state.voiceTarget, actions[0].value); }
+      catch (error) { result = { ok: false, reason: error.message || 'No se pudo insertar el dictado.' }; }
+      finally { state.voiceBusy = false; }
       if (result.ok) { state.voiceActions = []; state.voicePreview = false; state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; }
       renderPanel(); showStatus(result.ok ? 'Dictado insertado en el lugar seleccionado.' : result.reason); return;
     }

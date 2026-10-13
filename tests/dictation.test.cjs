@@ -15,6 +15,8 @@ function setup() {
   const listeners = new Map(), statuses = [], state = { fields: [], voiceTranscript: '', voiceActions: [], voiceTarget: null };
   let starts = 0, aiCalls = 0, events = 0;
   const context = {
+    location: { hostname: 'example.com', pathname: '/form', origin: 'https://example.com', href: 'https://example.com/form' },
+    URL, AbortSignal,
     state, FIELD_SELECTOR: 'input', Element: Input, HTMLInputElement: Input, HTMLTextAreaElement: Input,
     document: { body: {}, documentElement: {} }, window: {
       addEventListener: (name, handler) => listeners.set(name, handler),
@@ -96,4 +98,49 @@ test('dictar en un campo prepara una propuesta sin llamar a IA ni escribir todav
   assert.equal(s.state.voiceActions[0].value, 'Juan');
   assert.equal(input.value, 'Hola mundo');
   assert.equal(s.aiCalls(), 0);
+});
+
+function docsSetup() {
+  const s = setup();
+  Object.assign(s.context.location, { hostname: 'docs.google.com', pathname: '/document/d/test/edit', origin: 'https://docs.google.com', href: 'https://docs.google.com/document/d/test/edit?tab=t.0' });
+  s.context.wait = async () => {};
+  let pastes = 0;
+  const editor = { isConnected: true, focus() {}, ownerDocument: { defaultView: {
+    DataTransfer: class { setData(type, text) { this[type] = text; } },
+    ClipboardEvent: class { constructor(type, data) { this.type = type; Object.assign(this, data); } }
+  } }, dispatchEvent(event) { assert.equal(event.type, 'paste'); assert.equal(event.clipboardData['text/plain'], 'Nuevo texto'); pastes++; } };
+  const target = { element: editor, googleDocs: true, url: s.context.location.href };
+  return { ...s, editor, target, pastes: () => pastes };
+}
+
+test('la hoja de Google Docs se dirige al editor interno del iframe', () => {
+  const s = docsSetup(), page = { style: {} }, element = new s.Input('');
+  element.closest = selector => selector.startsWith('.kix-page') ? page : null;
+  s.context.document.querySelector = () => ({ contentDocument: { querySelector: () => s.editor } });
+  const destination = s.context.voiceDestinationFor(element);
+  assert.equal(destination.googleDocs, true);
+  assert.equal(destination.element, page);
+  assert.equal(destination.editor, s.editor);
+});
+
+test('Google Docs solo confirma inserción si cambia el documento guardado', async () => {
+  const s = docsSetup(); let reads = 0;
+  s.context.readGoogleDocsText = async () => reads++ ? 'Anterior\nNuevo texto' : 'Anterior';
+  assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto')).ok, true);
+  assert.equal(s.pastes(), 1);
+});
+
+test('Google Docs no declara éxito ni duplica un dictado no comprobado', async () => {
+  const s = docsSetup();
+  s.context.readGoogleDocsText = async () => 'Anterior';
+  assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto')).ok, false);
+  assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto')).ok, false);
+  assert.equal(s.pastes(), 1);
+});
+
+test('si no puede leer el documento, no envía el dictado', async () => {
+  const s = docsSetup();
+  s.context.readGoogleDocsText = async () => { throw new Error('Lectura no disponible'); };
+  assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto')).ok, false);
+  assert.equal(s.pastes(), 0);
 });
