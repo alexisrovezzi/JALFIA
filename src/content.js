@@ -1237,6 +1237,11 @@
       .memory-table-wrap { max-height: 220px; overflow: auto; margin-top: 8px; }
       .memory-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--ink); }
       .memory-table th, .memory-table td { padding: 6px 4px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+      .memory-actions { display: flex; align-items: center; gap: 10px; }
+      .memory-actions .icon-button { width: 42px; height: 42px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2px 4px rgba(15, 23, 42, 0.12); }
+      .memory-actions .icon-button:hover { background: var(--line); border-color: var(--blue); }
+      .memory-actions .icon-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+      .memory-actions .icon-button svg { width: 20px; height: 20px; }
       .setting-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); }
       .setting input[type="range"] { padding: 0; accent-color: var(--blue); }
       .setting input[type="checkbox"] { width: 20px; min-height: 20px; height: 20px; accent-color: var(--blue); }
@@ -2081,8 +2086,10 @@
             ${memories.map(item => `<tr><td>${escapeHtml(item.title)}</td><td>${item.memory.fields.length}</td><td>${item.memory.fields.filter(field => field.strategy).length}</td></tr>`).join('')}
           </tbody></table></div>
         </details>` : ''}
-        <button class="secondary" type="button" data-action="memory-refresh">Reanalizar conservando memoria</button>
-        <button class="secondary" type="button" data-action="memory-forget">Borrar memoria de esta página</button>
+        <div class="memory-actions" role="group" aria-label="Acciones de memoria">
+          <button class="icon-button" type="button" data-action="memory-refresh" title="Reanalizar conservando memoria" aria-label="Reanalizar conservando memoria">${refreshIcon()}</button>
+          <button class="icon-button" type="button" data-action="memory-forget" title="Borrar memoria de esta página" aria-label="Borrar memoria de esta página">${trashIcon()}</button>
+        </div>
         <small>El borrado incluye la pantalla principal y sus iframes disponibles.</small>
       </div>
       <div class="setting"><label for="jalfia-frame-scope">Documentos a analizar</label><select id="jalfia-frame-scope" data-action="frame-scope"><option value="all" ${state.frameScope === 'all' ? 'selected' : ''}>Página e iframes disponibles</option><option value="top" ${state.frameScope === 'top' ? 'selected' : ''}>Solo página principal</option>${state.frames.map(frame => `<option value="${frame.frameId}" ${state.frameScope === String(frame.frameId) ? 'selected' : ''}>${escapeHtml(frame.title)} (iframe ${frame.frameId})</option>`).join('')}</select></div>
