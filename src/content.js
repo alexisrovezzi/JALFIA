@@ -497,6 +497,7 @@
     state.fields = Array.from(root.querySelectorAll(FIELD_SELECTOR))
       .filter((element) => !isInsidePanel(element))
       .filter((element) => !element.closest('[aria-disabled="true"], [inert]'))
+      .filter((element) => !element.readOnly || ['combobox', 'autocomplete'].includes(fieldKind(element)))
       .filter((element) => !state.scopeElements || state.scopeElements.has(element))
       .filter((element) => !element.matches('[role="switch"], [role="checkbox"], [role="radio"]') || !element.querySelector('input[type="checkbox"], input[type="radio"]'))
       .filter((element) => isInteractable(element, root))
@@ -849,6 +850,7 @@
 
     const kind = fieldKind(element);
     if (kind === 'date') value = normalizeComparable(value);
+    if (element.readOnly && !['combobox', 'autocomplete'].includes(kind)) return { ok: false, reason: 'El campo es de solo lectura y no se puede modificar.' };
     element.focus();
 
     if (String(value).trim() === '' && !['switch', 'checkbox', 'radio', 'select'].includes(kind)) {

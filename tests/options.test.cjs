@@ -64,6 +64,16 @@ test('incluye la selección visible de Vuetify aunque no esté en la lista despl
   assert.ok(field.options.some(option => option.text === 'MEDICO DE PRUEBA' && option.selected));
 });
 
+test('no incluye campos calculados de solo lectura pero conserva combos de selección', () => {
+  const s = setup();
+  const calculated = s.input('imc', null); calculated.readOnly = true;
+  const editable = s.input('weight', null);
+  const combo = s.input('provider', null); combo.readOnly = true;
+  s.context.fieldKind = element => element === combo ? 'combobox' : 'text';
+  s.setFields([calculated, editable, combo]);
+  assert.deepEqual(Array.from(s.context.scanFields(), field => field.id), ['weight', 'provider']);
+});
+
 test('descarta instrucciones, filas no interactivas y opciones deshabilitadas', () => {
   const s = setup();
   const node = {
