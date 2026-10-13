@@ -90,5 +90,30 @@ test('la interpretacion valida evidencia, IDs, opciones y booleanos', async () =
 
 test('no acepta una respuesta que omite la correccion del texto', async () => {
   const ai = setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"actions":[]}' } }] }) }));
-  await assert.rejects(ai.interpret(local, 'texto reconocido', []), /texto corregido inválidos/);
+  await assert.rejects(ai.interpret(local, 'texto reconocido', []), /texto corregido requerido \(corrected_text\)/);
+});
+
+test('el prompt compatible exige texto corregido incluso cuando no hay cambios', async () => {
+  let body;
+  const ai = setup(async (url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ choices: [{ message: { content: '{"actions":[],"corrected_text":"Texto reconocido."}' } }] }) };
+  });
+  await ai.interpret(local, 'texto reconocido', []);
+  assert.ok(body.messages[0].content.includes('{"actions":[],"corrected_text":"Transcripción completa corregida."}'));
+  assert.ok(body.messages[0].content.includes('dos propiedades obligatorias'));
+});
+
+test('distingue respuestas mal formadas sin exponer el texto del proveedor', async () => {
+  const cases = [
+    [null, /debe ser un objeto/],
+    [{ corrected_text: 'Texto.' }, /lista de cambios requerida/],
+    [{ actions: [{}], corrected_text: 'Texto.' }, /más cambios/],
+    [{ actions: [], corrected_text: '' }, /vacío o demasiado largo/],
+    [{ actions: [null], corrected_text: 'Texto.' }, /cambio con formato inválido/]
+  ];
+  for (const [result, expected] of cases) {
+    const ai = setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(result) } }] }) }));
+    await assert.rejects(ai.interpret(local, 'texto', result?.actions?.[0] === null ? [{ id: 'a' }] : []), expected);
+  }
 });
