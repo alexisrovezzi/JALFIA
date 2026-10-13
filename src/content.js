@@ -64,6 +64,7 @@
     voicePreview: false,
     voiceBusy: false,
     voiceSubmit: false,
+    voiceTarget: null,
     darkMode: false,
     position: { x: 24, y: 24 },
     size: { width: 430, height: 475 }
@@ -2070,6 +2071,110 @@
     window.addEventListener('keydown', key, true);
   }
 
+  function voiceDestinationFor(element) {
+    const field = element.closest('textarea, input, [contenteditable="true"], [contenteditable="plaintext-only"]');
+    if (field && !field.disabled && !field.readOnly && !field.closest('[inert], [aria-disabled="true"]') &&
+      (field.isContentEditable || field.tagName === 'TEXTAREA' || ['text', 'search', 'email', 'tel', 'url', ''].includes(field.type))) {
+      return { kind: 'text', element: field };
+    }
+    if (element.closest('canvas, iframe')) return null;
+    const root = element.closest('form, [role="form"], section, article, main, [role="dialog"]');
+    if (root?.querySelector(FIELD_SELECTOR)) return { kind: 'form', element: root };
+    for (let node = element; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      if (node.querySelectorAll(FIELD_SELECTOR).length >= 2) return { kind: 'form', element: node };
+    }
+    return null;
+  }
+
+  function captureDictationTarget(element) {
+    const target = { kind: 'text', element, label: inferLabel(element) || 'Texto seleccionado' };
+    if (element.isContentEditable) {
+      target.original = element.innerHTML;
+      const selection = window.getSelection();
+      if (selection?.rangeCount && element.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+        target.range = selection.getRangeAt(0).cloneRange();
+      } else {
+        target.range = document.createRange(); target.range.selectNodeContents(element); target.range.collapse(false);
+      }
+    } else {
+      target.original = element.value;
+      target.start = element.selectionStart ?? element.value.length;
+      target.end = element.selectionEnd ?? target.start;
+    }
+    return target;
+  }
+
+  function chooseVoiceDestination() {
+    if (state.voiceBusy || state.listening || state.analyzingOptions) return;
+    state.cancelScopeSelection?.();
+    showStatus('Elegí dónde hablar: un campo para dictar o el fondo de un formulario para completar sus campos. Escape cancela.');
+    let candidate = null, previousOutline = '', previousOffset = '';
+    const clearHighlight = () => {
+      if (candidate) { candidate.element.style.outline = previousOutline; candidate.element.style.outlineOffset = previousOffset; }
+    };
+    const move = event => {
+      if (!(event.target instanceof Element) || isInsidePanel(event.target)) return;
+      const next = voiceDestinationFor(event.target);
+      if (next?.element === candidate?.element) return;
+      clearHighlight(); candidate = next;
+      if (candidate) {
+        previousOutline = candidate.element.style.outline; previousOffset = candidate.element.style.outlineOffset;
+        candidate.element.style.outline = '3px solid #2563eb'; candidate.element.style.outlineOffset = '3px';
+      }
+    };
+    const cleanup = () => {
+      clearHighlight();
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('click', select, true);
+      window.removeEventListener('keydown', key, true);
+      state.cancelScopeSelection = null;
+    };
+    const select = event => {
+      if (!(event.target instanceof Element) || isInsidePanel(event.target)) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      const destination = voiceDestinationFor(event.target);
+      if (!destination) { showStatus('Este lugar no admite dictado directo todavía. Elegí un campo editable o un formulario.'); return; }
+      cleanup();
+      if (destination.kind === 'text') {
+        state.voiceTarget = captureDictationTarget(destination.element);
+      } else {
+        state.voiceTarget = { kind: 'form', element: destination.element };
+        state.scopeRoot = destination.element; state.frameScope = 'top';
+      }
+      state.voiceSubmit = false;
+      startVoiceRecognition();
+    };
+    const key = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); cleanup(); showStatus('Selección de destino cancelada.'); }
+    };
+    state.cancelScopeSelection = cleanup;
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('click', select, true);
+    window.addEventListener('keydown', key, true);
+  }
+
+  function insertDictation(target, text) {
+    const element = target?.element;
+    if (!element?.isConnected || element.disabled || element.readOnly || element.closest('[inert], [aria-disabled="true"]')) return { ok: false, reason: 'El destino ya no está disponible. Seleccionalo de nuevo.' };
+    const current = element.isContentEditable ? element.innerHTML : element.value;
+    if (current !== target.original) return { ok: false, reason: 'El texto del destino cambió. Seleccionalo de nuevo antes de insertar.' };
+    element.focus({ preventScroll: true });
+    if (element.isContentEditable) {
+      if (!element.contains(target.range.commonAncestorContainer)) return { ok: false, reason: 'El editor cambió. Seleccionalo de nuevo.' };
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(target.range);
+      // Usar la edición nativa preserva el formato y el historial de deshacer.
+      if (!document.execCommand('insertText', false, text)) return { ok: false, reason: 'Este editor no admite la inserción de texto. No se aplicó el dictado.' };
+    } else {
+      const value = target.original.slice(0, target.start) + text + target.original.slice(target.end);
+      const setter = Object.getOwnPropertyDescriptor(element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(element, value); else element.value = value;
+      dispatchInputEvents(element);
+      if (element.value !== value) return { ok: false, reason: 'El campo no aceptó el texto dictado.' };
+      try { element.setSelectionRange(target.start + text.length, target.start + text.length); } catch {}
+    }
+    return { ok: true };
+  }
+
   function renderSettings() {
     const memories = [
       ...(state.memory ? [{ title: 'Página principal', memory: state.memory }] : []),
@@ -2119,8 +2224,8 @@
     const button = state.shadow.querySelector('[data-action="global-voice"]');
     if (!button) return;
     button.innerHTML = state.listening ? stopIcon() : microphoneIcon();
-    button.setAttribute('aria-label', state.listening ? 'Detener y procesar dictado' : 'Comenzar dictado');
-    button.title = state.listening ? 'Detener y procesar dictado' : state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado';
+    button.setAttribute('aria-label', state.listening ? 'Detener y procesar dictado' : 'Elegir dónde dictar o completar');
+    button.title = state.listening ? 'Detener y procesar dictado' : state.voiceTranscript ? 'Elegir destino para un nuevo dictado reemplazando el anterior' : 'Elegir dónde dictar o completar';
     button.classList.toggle('recording', state.listening);
     const label = state.shadow.querySelector('[data-voice-label]');
     if (label) label.textContent = state.voiceBusy ? 'Interpretando…' : state.listening ? 'Escuchando… Tocá para terminar' : 'Tocá para hablar';
@@ -2141,6 +2246,7 @@
     </article>`; }).join('');
     return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
       <button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>
+      ${state.voiceTarget ? `<small>${state.voiceTarget.kind === 'text' ? `Dictado en: ${escapeHtml(state.voiceTarget.label)}` : 'Completar el formulario seleccionado'}</small>` : ''}
       ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : ''}
       ${state.voiceShowText ? `<div class="recognized-text"><strong>Texto reconocido</strong><p data-transcript>${escapeHtml(state.voiceTranscript || 'Todavía no hay texto reconocido.')}</p>${state.voiceCorrectedText ? `<strong>Texto corregido por IA</strong><p>${escapeHtml(state.voiceCorrectedText)}</p>` : ''}</div>` : ''}
       </div>
@@ -2157,6 +2263,13 @@
 
   async function processVoice() {
     if (state.voiceBusy || !state.voiceTranscript.trim()) { showStatus('No hay dictado para interpretar.'); return; }
+    if (state.voiceTarget && !state.voiceTarget.element.isConnected) { showStatus('El destino ya no está disponible. Seleccionalo de nuevo.'); return; }
+    if (state.voiceTarget?.kind === 'text') {
+      state.voiceActions = [{ field_id: 'dictation-target', label: state.voiceTarget.label, value: state.voiceTranscript, evidence: state.voiceTranscript, include: true, errors: [] }];
+      state.voiceActionIndex = 0; state.voicePreview = false;
+      renderPanel(); showStatus('Revisá el dictado antes de insertarlo en el lugar seleccionado.'); return;
+    }
+    if (state.voiceTarget?.kind === 'form') { state.scopeRoot = state.voiceTarget.element; state.frameScope = 'top'; }
     state.voiceBusy = true;
     try {
       await refreshFrames(); scanFields();
@@ -2180,6 +2293,11 @@
     if (state.voiceBusy || !state.voicePreview) return;
     const actions = state.voiceActions.filter(action => action.include);
     if (!actions.length) { showStatus('Selecciona al menos un cambio.'); return; }
+    if (state.voiceTarget?.kind === 'text') {
+      const result = insertDictation(state.voiceTarget, actions[0].value);
+      if (result.ok) { state.voiceActions = []; state.voicePreview = false; state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; }
+      renderPanel(); showStatus(result.ok ? 'Dictado insertado en el lugar seleccionado.' : result.reason); return;
+    }
     state.voiceBusy = true;
     let applied = 0;
     try {
@@ -2672,8 +2790,8 @@
     if (state.voiceBusy) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => { control.disabled = true; });
     state.shadow.querySelector('[data-action="global-voice"]')?.addEventListener('click', () => {
       if (state.voiceBusy) return;
-      state.voiceSubmit = state.listening;
-      startVoiceRecognition();
+      if (state.listening) { state.voiceSubmit = true; startVoiceRecognition(); }
+      else chooseVoiceDestination();
     });
     state.shadow.querySelector('[data-action="interpret-voice"]')?.addEventListener('click', processVoice);
     state.shadow.querySelector('[data-action="apply-voice"]')?.addEventListener('click', applyVoiceActions);
