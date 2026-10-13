@@ -26,9 +26,11 @@ test('al aplicar ISO escribe día/mes/año en el control de texto', async () => 
   vm.runInContext(source.slice(source.indexOf('  async function setFieldValue('), source.indexOf('  function applySpeechToField(')), context);
   assert.equal((await context.setFieldValue('date', '2026-10-14')).ok, true);
   assert.equal(element.value, '14/10/2026');
-  assert.equal(events, 1);
+  assert.equal((await context.setFieldValue('date', '15/10/2026')).ok, true);
+  assert.equal(element.value, '15/10/2026');
+  assert.equal(events, 2);
   assert.equal((await context.setFieldValue('date', '14 de octubre de 2026')).ok, false);
-  assert.equal(element.value, '14/10/2026');
+  assert.equal(element.value, '15/10/2026');
 });
 
 test('detecta Hora como tiempo y conserva el formato con o sin segundos', async () => {

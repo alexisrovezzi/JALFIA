@@ -99,6 +99,10 @@
       const label = field.label || field.id;
       if (seen.has(action.field_id)) throw new Error(`La IA propuso más de un cambio para «${label}». Vuelve a interpretar.`);
       if (typeof action.value !== 'string') throw new Error(`La IA devolvió un valor con formato inválido para «${label}».`);
+      if (field.kind === 'date') {
+        const localized = action.value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (localized) action.value = `${localized[3]}-${localized[2]}-${localized[1]}`;
+      }
       const comparableEvidence = value => value.toLowerCase().replace(/\s+/g, ' ').trim();
       if (typeof action.evidence !== 'string' || !action.evidence.trim() || !comparableEvidence(transcript).includes(comparableEvidence(action.evidence))) throw new Error(`La IA no justificó el cambio de «${label}» con una cita del texto ingresado. Vuelve a interpretar.`);
       if (typeof action.needs_confirmation !== 'boolean') throw new Error(`La IA no indicó correctamente la confirmación para «${label}».`);

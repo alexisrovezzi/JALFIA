@@ -424,7 +424,7 @@
 
   function validateFieldValue(field, value) {
     const rules = field.rules || {};
-    const text = String(value ?? '');
+    const text = field.kind === 'date' ? normalizeComparable(value) : String(value ?? '');
     const errors = [];
     if (rules.required && (!text || (['switch', 'checkbox'].includes(field.kind) && !normalizeBoolean(value)))) errors.push('El campo es obligatorio.');
     if (!text || ['switch', 'checkbox', 'radio', 'select', 'combobox', 'autocomplete'].includes(field.kind)) return errors;
@@ -848,6 +848,7 @@
     if (!element) return { ok: false, reason: 'Campo no encontrado' };
 
     const kind = fieldKind(element);
+    if (kind === 'date') value = normalizeComparable(value);
     element.focus();
 
     if (String(value).trim() === '' && !['switch', 'checkbox', 'radio', 'select'].includes(kind)) {
