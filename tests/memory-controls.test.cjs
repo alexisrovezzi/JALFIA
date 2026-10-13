@@ -13,6 +13,7 @@ function setup(failingFrame) {
   const context = {
     state, memorySnapshot: () => snapshot, renderPanel() {}, showStatus: message => messages.push(message),
     chrome: { runtime: { sendMessage: async message => { requests.push(message); return { ok: true }; } } },
+    sendExtensionMessage: async message => { requests.push(message); return { ok: true }; },
     frameRequest: async (frame, operation) => { requests.push({ frameId: frame.frameId, operation }); return { ok: frame.frameId !== failingFrame }; }
   };
   vm.createContext(context);

@@ -25,7 +25,8 @@ function setup() {
     inferLabel: () => 'Detalle', isInsidePanel: () => false, renderPanel() {},
     showStatus: message => statuses.push(message), startVoiceRecognition: () => { starts++; },
     dispatchInputEvents: () => { events++; },
-    chrome: { runtime: { sendMessage: async () => { aiCalls++; } } }
+    chrome: { runtime: { sendMessage: async () => { aiCalls++; } } },
+    sendExtensionMessage: async () => { aiCalls++; }
   };
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('  function voiceDestinationFor('), source.indexOf('  function renderSettings(')), context);

@@ -65,6 +65,7 @@
     voiceBusy: false,
     voiceSubmit: false,
     voiceTarget: null,
+    contextInvalidated: false,
     dictationWriteMode: 'cursor',
     dictationReplaceConfirmed: false,
     darkMode: false,
@@ -77,11 +78,33 @@
   }
 
   function saveSettings() {
-    chrome.runtime.sendMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode } })
+    sendExtensionMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode } })
       .catch(() => showStatus('No pude guardar los ajustes.'));
   }
 
-  chrome.runtime.sendMessage({ type: 'JALFIA_GET_UI_SETTINGS' }).then(({ jalfiaSettings }) => {
+  async function sendExtensionMessage(message) {
+    const staleMessage = 'JALFIA se actualizó. Recargá esta página para volver a usar la extensión.';
+    try {
+      if (state.contextInvalidated || !chrome.runtime.id) throw new Error('Extension context invalidated.');
+      return await chrome.runtime.sendMessage(message);
+    } catch (error) {
+      if (state.contextInvalidated || /Extension context invalidated/i.test(error.message)) {
+        state.contextInvalidated = true; state.voiceSubmit = false;
+        stopAutoRescan(); state.cancelScopeSelection?.();
+        try { state.stopVoice?.(); } catch {}
+        if (state.shadow) {
+          showStatus(staleMessage);
+          state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => {
+            if (control.dataset.action !== 'close') control.disabled = true;
+          });
+        }
+        return { ok: false, error: staleMessage, reason: staleMessage };
+      }
+      throw error;
+    }
+  }
+
+  sendExtensionMessage({ type: 'JALFIA_GET_UI_SETTINGS' }).then(({ jalfiaSettings }) => {
     if (!jalfiaSettings) return;
     if (Number.isFinite(jalfiaSettings.opacity)) state.opacity = Math.min(1, Math.max(0.55, jalfiaSettings.opacity));
     state.darkMode = jalfiaSettings.darkMode === true;
@@ -494,7 +517,7 @@
     if ((!force && signature === state.memorySignature) || signature === state.memoryForgotten) return;
     state.memoryBusy = true;
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_SYNC', snapshot });
+      const response = await sendExtensionMessage({ type: 'JALFIA_MEMORY_SYNC', snapshot });
       if (!response?.ok) return;
       state.memory = response; state.memorySignature = signature;
       if (state.settingsMode && state.shadow) renderPanel();
@@ -512,7 +535,7 @@
     if (normalizeComparable(actual) !== normalizeComparable(expected) && normalizeComparable(selected) !== normalizeComparable(expected)) return;
     const snapshot = memorySnapshot();
     if (JSON.stringify(snapshot) === state.memoryForgotten) return;
-    const response = await chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_SUCCESS', snapshot, fieldKey: memoryFieldKey(field), strategy });
+    const response = await sendExtensionMessage({ type: 'JALFIA_MEMORY_SUCCESS', snapshot, fieldKey: memoryFieldKey(field), strategy });
     if (response?.ok) state.memory = response;
   }
 
@@ -520,7 +543,7 @@
     if (!IS_TOP_FRAME) return;
     if (state.frameRefresh) return state.frameRefresh;
     state.frameRefresh = (async () => {
-      const response = await chrome.runtime.sendMessage({ type: 'JALFIA_COLLECT_FRAMES' });
+      const response = await sendExtensionMessage({ type: 'JALFIA_COLLECT_FRAMES' });
       if (!response?.ok) throw new Error(response?.error || 'No pude leer los iframes.');
       state.frames = response.frames;
       state.frameFields = response.frames.flatMap(frame => frame.fields.map(field => ({ ...field, id: `frame-${frame.frameId}-${frame.documentId}-${field.id}`, localFieldId: field.id, frameId: frame.frameId, documentId: frame.documentId, frameTitle: frame.title })));
@@ -530,7 +553,7 @@
   }
 
   function frameRequest(field, operation, value) {
-    return chrome.runtime.sendMessage({ type: 'JALFIA_FRAME_REQUEST', frameId: field.frameId, documentId: field.documentId, fieldId: field.localFieldId, operation, value });
+    return sendExtensionMessage({ type: 'JALFIA_FRAME_REQUEST', frameId: field.frameId, documentId: field.documentId, fieldId: field.localFieldId, operation, value });
   }
 
   function dispatchInputEvents(element) {
@@ -642,7 +665,7 @@
     </div></div>`;
     document.documentElement.appendChild(host);
     state.analysisOverlay = host;
-    if (IS_TOP_FRAME) chrome.runtime.sendMessage({ type: 'JALFIA_LOCK_FRAMES', locked: true }).catch(() => {});
+    if (IS_TOP_FRAME) sendExtensionMessage({ type: 'JALFIA_LOCK_FRAMES', locked: true }).catch(() => {});
     // Bloquear solo eventos humanos: los clics y teclas del analizador siguen funcionando.
     const block = (event) => {
       if (!event.isTrusted) return;
@@ -659,7 +682,7 @@
         if (title) shadow.querySelector('[data-analysis-title]').textContent = title;
       },
       remove() {
-        if (IS_TOP_FRAME) chrome.runtime.sendMessage({ type: 'JALFIA_LOCK_FRAMES', locked: false }).catch(() => {});
+        if (IS_TOP_FRAME) sendExtensionMessage({ type: 'JALFIA_LOCK_FRAMES', locked: false }).catch(() => {});
         events.forEach((type) => window.removeEventListener(type, block, true));
         host.remove();
         state.analysisOverlay = null;
@@ -2350,7 +2373,7 @@
       if (visibleFields().some(field => ['combobox', 'autocomplete'].includes(field.kind) && !field.options.length)) await analyzeOptions();
       scanFields(); renderPanel();
       const fields = visibleFields().map(({ id, label, kind, options, rules }) => ({ id, label, kind, options, rules: { required: rules.required, pattern: rules.pattern, min: rules.min, max: rules.max, maxlength: rules.maxlength } }));
-      const response = await chrome.runtime.sendMessage({ type: 'JALFIA_INTERPRET', transcript: state.voiceTranscript, fields });
+      const response = await sendExtensionMessage({ type: 'JALFIA_INTERPRET', transcript: state.voiceTranscript, fields });
       if (!response?.ok) throw new Error(response?.error || 'No pude interpretar el dictado.');
       state.voiceCorrectedText = response.corrected_text;
       state.voiceActionIndex = 0; state.voicePreview = false;
@@ -2480,6 +2503,7 @@
   }
 
   function showStatus(message) {
+    if (state.contextInvalidated) message = 'JALFIA se actualizó. Recargá esta página para volver a usar la extensión.';
     state.statusMessage = message || '';
     const status = state.shadow?.querySelector('[data-status]');
     if (status) {
@@ -2829,7 +2853,7 @@
   async function forgetPageMemory() {
     const snapshot = memorySnapshot();
     const results = await Promise.allSettled([
-      chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot }).then(response => {
+      sendExtensionMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot }).then(response => {
         if (!response?.ok) throw new Error(response?.error || 'No pude borrar la memoria principal.');
         state.memoryForgotten = JSON.stringify(snapshot); state.memory = null; state.memorySignature = '';
       }),
@@ -2846,6 +2870,9 @@
   }
 
   function wirePanelEvents() {
+    if (state.contextInvalidated) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => {
+      if (control.dataset.action !== 'close') control.disabled = true;
+    });
     state.shadow.querySelector('[data-action="dictation-write-mode"]')?.addEventListener('change', event => {
       state.dictationWriteMode = ['cursor', 'append', 'replace'].includes(event.target.value) ? event.target.value : 'cursor';
       state.dictationReplaceConfirmed = false; renderPanel();
@@ -2884,7 +2911,7 @@
     state.shadow.querySelector('[data-action="voice-mode"]')?.addEventListener('click', () => { state.voiceMode = true; state.previewMode = false; renderPanel(); });
     state.shadow.querySelectorAll('[data-voice-include]').forEach(input => input.addEventListener('change', () => { state.voiceActions[Number(input.dataset.voiceInclude)].include = input.checked; }));
     state.shadow.querySelector('[data-action="configure-ai"]')?.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'JALFIA_OPEN_AI_SETTINGS' }).catch(() => showStatus('No pude abrir la configuración de IA.'));
+      sendExtensionMessage({ type: 'JALFIA_OPEN_AI_SETTINGS' }).catch(() => showStatus('No pude abrir la configuración de IA.'));
     });
     state.shadow.querySelectorAll('details').forEach((details) => details.addEventListener('toggle', schedulePanelSize));
     state.shadow.querySelector('[data-action="choose-scope"]')?.addEventListener('click', chooseScope);
@@ -3109,7 +3136,7 @@
         scanFields();
         if (message.operation === 'forget-memory') {
           const snapshot = memorySnapshot();
-          const response = await chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot });
+          const response = await sendExtensionMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot });
           if (response?.ok) { state.memoryForgotten = JSON.stringify(snapshot); state.memorySignature = ''; state.memory = null; }
           return response;
         }
