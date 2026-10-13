@@ -90,6 +90,28 @@ test('si el destino cambió durante el dictado, no sobrescribe su texto', () => 
   assert.equal(s.events(), 0);
 });
 
+test('agregar al final conserva el contenido y reemplazar todo elimina el texto anterior', () => {
+  for (const [mode, expected] of [['append', 'Hola mundo!Nuevo'], ['replace', 'Nuevo']]) {
+    const s = setup(), input = new s.Input('Hola mundo!');
+    assert.equal(s.context.insertDictation(s.context.captureDictationTarget(input), 'Nuevo', mode).ok, true);
+    assert.equal(input.value, expected);
+    assert.equal(input.selectionStart, expected.length);
+  }
+});
+
+test('reemplazar todo exige confirmación antes de escribir', async () => {
+  const s = setup(), input = new s.Input('Original');
+  s.state.voiceTarget = s.context.captureDictationTarget(input);
+  Object.assign(s.state, { voicePreview: true, voiceActions: [{ include: true, value: 'Nuevo' }], dictationWriteMode: 'replace', dictationReplaceConfirmed: false });
+  vm.runInContext(source.slice(source.indexOf('  async function applyVoiceActions('), source.indexOf('  function renderPanel(')), s.context);
+  await s.context.applyVoiceActions();
+  assert.equal(input.value, 'Original');
+  assert.match(s.statuses.at(-1), /Confirmá el reemplazo/);
+  s.state.dictationReplaceConfirmed = true;
+  await s.context.applyVoiceActions();
+  assert.equal(input.value, 'Nuevo');
+});
+
 test('dictar en un campo prepara una propuesta sin llamar a IA ni escribir todavía', async () => {
   const s = setup(), input = new s.Input('Hola mundo');
   s.state.voiceTarget = s.context.captureDictationTarget(input);
@@ -107,8 +129,9 @@ function docsSetup() {
   let pastes = 0;
   const editor = { isConnected: true, focus() {}, ownerDocument: { defaultView: {
     DataTransfer: class { setData(type, text) { this[type] = text; } },
-    ClipboardEvent: class { constructor(type, data) { this.type = type; Object.assign(this, data); } }
-  } }, dispatchEvent(event) { assert.equal(event.type, 'paste'); assert.equal(event.clipboardData['text/plain'], 'Nuevo texto'); pastes++; } };
+    ClipboardEvent: class { constructor(type, data) { this.type = type; Object.assign(this, data); } },
+    KeyboardEvent: class { constructor(type, data) { this.type = type; Object.assign(this, data); } }
+  } }, dispatchEvent(event) { if (event.type !== 'paste') return; assert.equal(event.clipboardData['text/plain'], 'Nuevo texto'); pastes++; } };
   const target = { element: editor, googleDocs: true, url: s.context.location.href };
   return { ...s, editor, target, pastes: () => pastes };
 }
@@ -143,4 +166,16 @@ test('si no puede leer el documento, no envía el dictado', async () => {
   s.context.readGoogleDocsText = async () => { throw new Error('Lectura no disponible'); };
   assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto')).ok, false);
   assert.equal(s.pastes(), 0);
+});
+
+test('Google Docs comprueba el resultado según agregar o reemplazar', async () => {
+  for (const [mode, after] of [['append', 'AnteriorNuevo texto'], ['replace', 'Nuevo texto']]) {
+    const s = docsSetup(); let reads = 0; const keys = [];
+    const dispatch = s.editor.dispatchEvent;
+    s.editor.dispatchEvent = event => { if (event.type === 'keydown') keys.push(event.key); dispatch(event); };
+    s.context.readGoogleDocsText = async () => reads++ ? after : 'Anterior';
+    assert.equal((await s.context.insertGoogleDocsDictation(s.target, 'Nuevo texto', mode)).ok, true);
+    assert.deepEqual(keys, [mode === 'append' ? 'End' : 'a']);
+    assert.equal(s.pastes(), 1);
+  }
 });
