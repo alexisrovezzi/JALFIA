@@ -2141,7 +2141,7 @@
     </article>`; }).join('');
     return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
       <button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>
-      ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : `<small>${visibleFields().length} campos detectados</small>`}
+      ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : ''}
       ${state.voiceShowText ? `<div class="recognized-text"><strong>Texto reconocido</strong><p data-transcript>${escapeHtml(state.voiceTranscript || 'Todavía no hay texto reconocido.')}</p>${state.voiceCorrectedText ? `<strong>Texto corregido por IA</strong><p>${escapeHtml(state.voiceCorrectedText)}</p>` : ''}</div>` : ''}
       </div>
       ${state.voiceActions.length ? `<div class="footer ${state.voicePreview ? '' : 'footer-navigation'}">
