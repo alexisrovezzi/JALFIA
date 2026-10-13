@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Demo formulario JALFIA</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f4f6f8;
+        color: #17202a;
+        font-family: Arial, sans-serif;
+      }
+
+      main {
+        max-width: 760px;
+        margin: 40px auto;
+        padding: 24px;
+        background: #fff;
+        border: 1px solid #d9dee8;
+        border-radius: 8px;
+      }
+
+      h1 {
+        margin-top: 0;
+      }
+
+      form {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea {
+        min-height: 38px;
+        padding: 8px;
+        border: 1px solid #b9c2cf;
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 92px;
+      }
+
+      .inline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      button {
+        justify-self: start;
+        min-height: 38px;
+        padding: 8px 14px;
+        border: 0;
+        border-radius: 6px;
+        background: #1f7a68;
+        color: #fff;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Demo formulario JALFIA</h1>
+      <form>
+        <div class="grid">
+          <label>
+            Nombre y apellido
+            <input name="nombre" placeholder="Juan Perez">
+          </label>
+          <label>
+            DNI
+            <input name="dni" type="number" placeholder="30111222">
+          </label>
+          <label>
+            Fecha de ingreso
+            <input name="fecha_ingreso" type="date">
+          </label>
+          <label>
+            Puesto
+            <select name="puesto">
+              <option value="">Seleccionar</option>
+              <option>Chofer</option>
+              <option>Administrativo</option>
+              <option>Logistica</option>
+              <option>Operario</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Observaciones
+          <textarea name="observaciones"></textarea>
+        </label>
+
+        <label for="ubicacion">Ubicacion (autocomplete con menu fuera del formulario)</label>
+        <input id="ubicacion" name="ubicacion" role="combobox" aria-autocomplete="list" aria-controls="ubicaciones-menu" aria-expanded="false" autocomplete="off">
+
+        <label class="inline">
+          <input name="activo" type="checkbox">
+          Trabajador activo
+        </label>
+
+        <button type="button">Guardar demo</button>
+      </form>
+    </main>
+    <div id="ubicaciones-menu" role="listbox" hidden style="position:fixed;z-index:10;background:white;border:1px solid #b9c2cf;padding:8px;border-radius:6px;"></div>
+    <script>
+      const ubicacion = document.getElementById('ubicacion');
+      const menu = document.getElementById('ubicaciones-menu');
+      const opciones = ['CONSULTORIOS MITRE 656', 'CONSULTORIOS LOS FRESNOS 412', 'HOSPITAL PRIVADO TRES CERRITOS'];
+      function cerrarMenu() { menu.hidden = true; ubicacion.setAttribute('aria-expanded', 'false'); }
+      function abrirMenu() {
+        const rect = ubicacion.getBoundingClientRect();
+        menu.style.left = `${rect.left}px`; menu.style.top = `${rect.bottom}px`; menu.style.width = `${rect.width}px`;
+        menu.replaceChildren();
+        for (const texto of opciones) {
+          const opcion = document.createElement('button');
+          opcion.type = 'button'; opcion.setAttribute('role', 'option'); opcion.textContent = texto;
+          opcion.style.display = 'block'; opcion.style.width = '100%';
+          opcion.addEventListener('click', () => {
+            ubicacion.value = texto;
+            ubicacion.dispatchEvent(new Event('input', { bubbles: true }));
+            ubicacion.dispatchEvent(new Event('change', { bubbles: true }));
+            cerrarMenu();
+          });
+          menu.appendChild(opcion);
+        }
+        menu.hidden = false; ubicacion.setAttribute('aria-expanded', 'true');
+      }
+      ubicacion.addEventListener('click', abrirMenu);
+      ubicacion.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown') abrirMenu();
+        if (event.key === 'Escape') cerrarMenu();
+      });
+      document.addEventListener('click', (event) => {
+        if (event.target !== ubicacion && !menu.contains(event.target)) cerrarMenu();
+      });
+    </script>
+  </body>
+</html>

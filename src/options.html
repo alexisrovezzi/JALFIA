@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>JALFIA · Configuración de IA</title><link rel="stylesheet" href="options.css"><script src="options.js" defer></script></head>
+<body><main>
+  <header><div class="logo">J</div><div><h1>Inteligencia artificial</h1><p>JALFIA · Conexión directa desde la extensión</p></div></header>
+  <form id="ai-settings">
+    <label for="provider">Proveedor</label><select id="provider"><option value="local">Servidor local</option><option value="openai">OpenAI</option><option value="compatible">Compatible con OpenAI</option></select>
+    <label for="base-url">URL base de la API</label><input id="base-url" type="url" required placeholder="http://localhost:8080/v1"><p class="hint" id="url-hint">Incluye el prefijo de API de tu servidor, por ejemplo /v1 o /api.</p>
+    <label for="api-key">API key <span class="hint">(opcional en servidores sin autenticación)</span></label><div class="key-row"><input id="api-key" type="password" autocomplete="off" spellcheck="false"><button id="show-key" type="button" aria-pressed="false">Mostrar</button></div>
+    <label for="model">Modelo</label><div class="key-row"><input id="model" required list="models" placeholder="Selecciona o escribe el identificador"><datalist id="models"></datalist><button id="load-models" type="button">Cargar modelos</button></div>
+    <p class="hint">La prueba envía solo un mensaje de conexión al modelo, sin campos ni datos del formulario. Puede consumir uso de API.</p>
+    <div class="actions"><button type="submit" class="primary">Guardar configuración</button><button id="test" type="button">Probar conexión</button></div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </form>
+</main></body></html>
