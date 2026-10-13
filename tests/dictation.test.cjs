@@ -198,6 +198,26 @@ test('dictar en un campo prepara una propuesta sin llamar a IA ni escribir todav
   assert.equal(s.aiCalls(), 0);
 });
 
+test('el modo escrito prepara el mismo dictado sin iniciar el micrófono', () => {
+  const s = setup(), input = new s.Input('Hola mundo');
+  s.state.textInputMode = true; s.state.typedDictation = 'Juan';
+  s.state.voiceTarget = s.context.captureDictationTarget(input);
+  s.context.beginDestinationInput();
+  assert.equal(s.starts(), 0);
+  assert.equal(s.state.voiceTranscript, 'Juan');
+  assert.equal(s.state.voiceActions[0].value, 'Juan');
+  assert.equal(input.value, 'Hola mundo');
+  assert.equal(s.aiCalls(), 0);
+});
+
+test('el modo escrito vacío pide texto sin grabar ni aplicar cambios', () => {
+  const s = setup(); s.state.textInputMode = true; s.state.typedDictation = '  ';
+  s.context.beginDestinationInput();
+  assert.equal(s.starts(), 0);
+  assert.equal(s.state.voiceActions.length, 0);
+  assert.match(s.statuses.at(-1), /Escribí o pegá/);
+});
+
 function docsSetup() {
   const s = setup();
   Object.assign(s.context.location, { hostname: 'docs.google.com', pathname: '/document/d/test/edit', origin: 'https://docs.google.com', href: 'https://docs.google.com/document/d/test/edit?tab=t.0' });

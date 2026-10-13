@@ -66,6 +66,8 @@
     voiceBusy: false,
     voiceSubmit: false,
     voiceTarget: null,
+    textInputMode: false,
+    typedDictation: '',
     contextInvalidated: false,
     dictationWriteMode: 'cursor',
     dictationReplaceConfirmed: false,
@@ -2196,7 +2198,7 @@
         // Docs debe recibir el clic para colocar su propio cursor en la hoja.
         window.setTimeout(() => {
           state.voiceTarget = { kind: 'text', googleDocs: true, element: destination.editor, label: 'Documento de Google Docs', url: location.href };
-          state.voiceSubmit = false; startVoiceRecognition();
+          state.voiceSubmit = false; beginDestinationInput();
         }, 0);
         return;
       }
@@ -2208,7 +2210,7 @@
         state.scopeRoot = destination.element; state.scopeElements = destination.elements || null; state.frameScope = 'top';
       }
       state.voiceSubmit = false;
-      startVoiceRecognition();
+      beginDestinationInput();
     };
     const select = event => {
       if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopImmediatePropagation(); return; }
@@ -2245,6 +2247,21 @@
     window.addEventListener('keydown', key, true);
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('pointerup', up, true);
+  }
+
+  function beginDestinationInput() {
+    if (!state.textInputMode) { startVoiceRecognition(); return; }
+    state.voiceActions = []; state.voiceActionIndex = 0; state.voicePreview = false;
+    state.voiceCorrectedText = ''; state.dictationWriteMode = 'cursor'; state.dictationReplaceConfirmed = false;
+    interpretTypedDictation();
+  }
+
+  function interpretTypedDictation() {
+    if (state.voiceBusy || state.listening) return;
+    if (!state.typedDictation.trim()) { renderPanel(); showStatus('Escribí o pegá el texto que querés usar.'); return; }
+    if (!state.voiceTarget) { chooseVoiceDestination(); return; }
+    state.voiceTranscript = state.typedDictation;
+    processVoice();
   }
 
   function insertDictation(target, text, mode = 'cursor') {
@@ -2387,7 +2404,11 @@
       ${action.result ? `<span>${escapeHtml(action.result)}</span>` : ''}
     </article>`; }).join('');
     return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
-      <button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>
+      ${state.textInputMode ? `<div class="setting"><label for="jalfia-typed-dictation">Modo de prueba: escribir o pegar dictado</label>
+        <textarea id="jalfia-typed-dictation" data-typed-dictation rows="4" maxlength="20000" placeholder="Escribí lo que dirías al micrófono…" ${state.voiceBusy ? 'disabled' : ''}>${escapeHtml(state.typedDictation)}</textarea>
+        <button class="primary" type="button" data-action="interpret-typed" ${state.voiceBusy ? 'disabled' : ''}>${state.voiceTarget ? 'Interpretar texto' : 'Elegir destino y continuar'}</button>
+        ${state.voiceTarget ? '<button class="secondary" type="button" data-action="choose-text-destination">Cambiar destino</button>' : ''}
+      </div>` : `<button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>`}
       ${state.voiceTarget ? `<small>${state.voiceTarget.kind === 'text' ? `Dictado en: ${escapeHtml(state.voiceTarget.label)}` : 'Completar el formulario seleccionado'}</small>` : ''}
       ${state.voiceTarget?.kind === 'text' && state.voiceActions.length ? `<div class="setting"><label for="jalfia-write-mode">Cómo escribir el dictado</label><select id="jalfia-write-mode" data-action="dictation-write-mode" ${state.voiceBusy ? 'disabled' : ''}>
         <option value="cursor" ${state.dictationWriteMode === 'cursor' ? 'selected' : ''}>Insertar en el cursor</option>
@@ -2402,6 +2423,7 @@
         ${state.voicePreview ? `<button class="secondary" type="button" data-action="voice-preview-back">Volver</button><button class="primary" type="button" data-action="apply-voice" ${state.voiceBusy || state.voiceActions.some(action => action.include && action.errors.length) ? 'disabled' : ''}>Confirmar y aplicar</button>` : `<button class="secondary" type="button" data-action="prev-voice" title="Cambio anterior" aria-label="Cambio anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"></path></svg></button><button class="primary" type="button" data-action="voice-preview">Vista previa</button><button class="secondary" type="button" data-action="next-voice" title="Cambio siguiente" aria-label="Cambio siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>`}
       </div>` : ''}
       <div class="voice-toolbar">
+        <button type="button" data-action="text-input-mode" title="Modo de prueba: escribir o pegar dictado" aria-label="Modo de prueba: escribir o pegar dictado" aria-pressed="${state.textInputMode}" ${state.listening || state.voiceBusy ? 'disabled' : ''}>Aa</button>
         <button type="button" data-action="interpret-voice" title="Interpretar nuevamente" aria-label="Interpretar nuevamente" ${!state.voiceTranscript || state.listening || state.voiceBusy ? 'disabled' : ''}>${refreshIcon()}</button>
         <button type="button" data-action="manual-mode" title="Completar manualmente" aria-label="Completar manualmente" ${state.voiceBusy || state.listening ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"></path></svg></button>
         <button type="button" data-action="show-recognized" title="Ver texto reconocido" aria-label="Ver texto reconocido" aria-pressed="${state.voiceShowText}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
@@ -2448,7 +2470,7 @@
       try { result = state.voiceTarget.googleDocs ? await insertGoogleDocsDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode) : insertDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode); }
       catch (error) { result = { ok: false, reason: error.message || 'No se pudo insertar el dictado.' }; }
       finally { state.voiceBusy = false; }
-      if (result.ok) { state.voiceActions = []; state.voicePreview = false; state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; }
+      if (result.ok) { state.voiceActions = []; state.voicePreview = false; state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; state.typedDictation = ''; }
       renderPanel(); showStatus(result.ok ? 'Dictado insertado en el lugar seleccionado.' : result.reason); return;
     }
     state.voiceBusy = true;
@@ -2477,7 +2499,7 @@
     finally {
       state.voiceBusy = false; state.voicePreview = false;
       state.voiceActionIndex = Math.min(state.voiceActionIndex, Math.max(0, state.voiceActions.length - 1));
-      if (!state.voiceActions.length) { state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; }
+      if (!state.voiceActions.length) { state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; state.typedDictation = ''; }
       renderPanel();
     }
   }
@@ -2930,6 +2952,18 @@
   }
 
   function wirePanelEvents() {
+    state.shadow.querySelector('[data-action="text-input-mode"]')?.addEventListener('click', () => {
+      if (state.listening || state.voiceBusy) return;
+      state.cancelScopeSelection?.(); state.textInputMode = !state.textInputMode; renderPanel();
+    });
+    state.shadow.querySelector('[data-typed-dictation]')?.addEventListener('input', event => {
+      state.typedDictation = event.target.value; state.voiceActions = []; state.voicePreview = false;
+      for (const action of ['apply-voice', 'voice-preview']) {
+        const button = state.shadow.querySelector(`[data-action="${action}"]`); if (button) button.disabled = true;
+      }
+    });
+    state.shadow.querySelector('[data-action="interpret-typed"]')?.addEventListener('click', interpretTypedDictation);
+    state.shadow.querySelector('[data-action="choose-text-destination"]')?.addEventListener('click', () => chooseVoiceDestination());
     if (state.contextInvalidated) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => {
       if (control.dataset.action !== 'close') control.disabled = true;
     });
