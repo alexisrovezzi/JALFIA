@@ -56,3 +56,29 @@ test('detener tiene prioridad sobre el bloqueo de análisis', () => {
   s.context.startVoiceRecognition();
   assert.equal(s.timers.size, 1);
 });
+
+test('network reintenta tres veces sin borrar lo transcrito y después libera la escucha', () => {
+  const s = setup(); s.context.startVoiceRecognition();
+  const recognition = s.state.recognition;
+  recognition.onresult({ results: [Object.assign([{ transcript: 'primera parte' }], { isFinal: true })] });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    recognition.onerror({ error: 'network' });
+    recognition.onend();
+    const [id, retry] = [...s.timers.entries()][0]; s.timers.delete(id); retry();
+    assert.equal(s.state.listening, true);
+    assert.equal(s.state.voiceTranscript, 'primera parte');
+  }
+  recognition.onerror({ error: 'network' }); recognition.onend();
+  assert.equal(s.state.listening, false);
+  assert.equal(s.state.voiceTranscript, 'primera parte');
+  assert.equal(s.timers.size, 0);
+});
+
+test('detener durante un reintento cancela la recuperación y permite procesar el texto', () => {
+  const s = setup(); s.context.startVoiceRecognition();
+  s.state.recognition.onerror({ error: 'network' }); s.state.recognition.onend();
+  s.state.voiceSubmit = true; s.state.stopVoice();
+  assert.equal(s.state.listening, false);
+  assert.equal(s.timers.size, 0);
+  assert.equal(s.processed(), 1);
+});

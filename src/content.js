@@ -967,12 +967,16 @@
     let failed = false;
     let finished = false;
     let stopTimer = null;
+    let networkRetries = 0;
+    let networkRetryDelay = 0;
+    let recoveryTimer = null;
 
     const finish = () => {
       if (finished) return;
       finished = true; keepListening = false;
       window.clearTimeout(restartTimer);
       window.clearTimeout(stopTimer);
+      window.clearTimeout(recoveryTimer);
       recognition.onresult = null; recognition.onend = null; recognition.onerror = null;
       state.listening = false;
       state.activeVoiceFieldId = '';
@@ -1048,16 +1052,33 @@
     };
 
     recognition.onerror = (event) => {
+      if (finished || !keepListening) return;
       if (event.error === 'no-speech') return;
+      if (event.error === 'network' && networkRetries < 3) {
+        networkRetries++;
+        networkRetryDelay = networkRetries * 1000;
+        showStatus(`Se interrumpió la conexión de voz. Reintentando ${networkRetries} de 3; el texto reconocido se conserva.`);
+        window.clearTimeout(recoveryTimer);
+        recoveryTimer = window.setTimeout(() => {
+          if (finished || !keepListening) return;
+          failed = true;
+          showStatus('No pude recuperar la conexión de voz. El texto reconocido se conserva para revisarlo.');
+          state.stopVoice?.(true);
+        }, 2500);
+        return;
+      }
       keepListening = false;
       failed = true;
-      showStatus(`No pude usar el microfono: ${event.error || 'error desconocido'}.`);
+      showStatus(event.error === 'network' ? 'La conexión de voz falló después de 3 reintentos. El texto reconocido se conserva para revisarlo.' : `No pude usar el microfono: ${event.error || 'error desconocido'}.`);
       state.stopVoice?.();
     };
 
     recognition.onend = () => {
+      window.clearTimeout(recoveryTimer); recoveryTimer = null;
       if (keepListening) {
-        restartTimer = window.setTimeout(start, 250);
+        const delay = networkRetryDelay || 250;
+        networkRetryDelay = 0;
+        restartTimer = window.setTimeout(start, delay);
       } else {
         finish();
       }
