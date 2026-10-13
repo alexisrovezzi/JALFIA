@@ -10,7 +10,7 @@ function setup(stopThrows = false) {
     start() {} stop() { if (stopThrows) throw new Error('Already stopped'); }
     abort() { aborts++; }
   }
-  const state = { shadow: { querySelector: () => null }, voiceSubmit: false };
+  const state = { shadow: { querySelector: () => null }, voiceSubmit: false, voiceCompletedFieldIds: new Set() };
   const context = { state, window: { SpeechRecognition: Recognition,
     setTimeout: fn => { const id = ++sequence; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id) },
     updateVoiceButtons() {}, renderPanel() {}, showStatus() {}, processVoice: () => { processed++; },

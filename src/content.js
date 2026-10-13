@@ -61,6 +61,7 @@
     voiceCorrectedText: '',
     voiceShowText: false,
     voiceActions: [],
+    voiceCompletedFieldIds: new Set(),
     voiceActionIndex: 0,
     voicePreview: false,
     voiceBusy: false,
@@ -994,6 +995,7 @@
     updateVoiceButtons();
     if (!fieldId) {
       state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceActions = [];
+      state.voiceCompletedFieldIds.clear();
       state.voiceActionIndex = 0; state.voicePreview = false;
       state.dictationWriteMode = 'cursor'; state.dictationReplaceConfirmed = false;
       renderPanel();
@@ -2428,7 +2430,7 @@
       if (!response?.ok) throw new Error(response?.error || 'No pude interpretar el dictado.');
       state.voiceCorrectedText = response.corrected_text;
       state.voiceActionIndex = 0; state.voicePreview = false;
-      state.voiceActions = response.actions.map(action => {
+      state.voiceActions = response.actions.filter(action => !state.voiceCompletedFieldIds.has(action.field_id)).map(action => {
         const field = state.fields.find(field => field.id === action.field_id);
         return { ...action, label: field.label, include: !action.needs_confirmation, errors: validateFieldValue(field, action.value) };
       });
@@ -2466,11 +2468,20 @@
         const selected = field.kind === 'select' ? element?.selectedOptions?.[0]?.textContent : '';
         const verified = field.frameId ? result.ok && result.verified : result.ok && (normalizeComparable(actual) === normalizeComparable(action.value) || normalizeComparable(selected) === normalizeComparable(action.value));
         action.result = verified ? '✓ Completado y comprobado' : result.reason || 'No se pudo comprobar el valor aplicado';
-        if (verified) { applied++; action.include = false; state.draftValues.delete(field.id); state.editedFieldIds.delete(field.id); state.formClearFieldIds.delete(field.id); }
+        if (verified) {
+          applied++; state.voiceCompletedFieldIds.add(field.id);
+          state.voiceActions = state.voiceActions.filter(pending => pending !== action);
+          state.draftValues.delete(field.id); state.editedFieldIds.delete(field.id); state.formClearFieldIds.delete(field.id);
+        }
       }
       showStatus(`${applied} de ${actions.length} cambios completados y comprobados.`);
     } catch (error) { showStatus(error.message); }
-    finally { state.voiceBusy = false; state.voicePreview = false; renderPanel(); }
+    finally {
+      state.voiceBusy = false; state.voicePreview = false;
+      state.voiceActionIndex = Math.min(state.voiceActionIndex, Math.max(0, state.voiceActions.length - 1));
+      if (!state.voiceActions.length) { state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.voiceTarget = null; }
+      renderPanel();
+    }
   }
 
   function renderPanel() {
