@@ -223,6 +223,7 @@
     const hasPopup = (element.getAttribute('aria-haspopup') || '').toLowerCase();
     const vuetifyRoot = element.closest('.v-select, .v-autocomplete, .v-combobox');
     if (tag === 'input' && type === 'text' && /^(fecha|date)(\b|\s)/i.test(inferLabel(element).trim()) && (/^\d{2}\/\d{2}\/\d{4}$/.test(element.value || '') || (!element.value && hasPopup === 'true'))) return 'date';
+    if (tag === 'input' && type === 'text' && /^(hora|time)(\b|\s)/i.test(inferLabel(element).trim()) && /^\d{1,2}:\d{2}(:\d{2})?$/.test(element.value || '')) return 'time';
     if (role === 'switch') return 'switch';
     if (role === 'checkbox') return 'checkbox';
     if (role === 'radio') return 'radio';
@@ -462,6 +463,8 @@
       kind,
       tag,
       type: element.getAttribute('type') || tag,
+      displayFormat: kind === 'date' ? (element.type === 'text' ? 'DD/MM/YYYY' : 'YYYY-MM-DD')
+        : kind === 'time' ? (/^\d{1,2}:\d{2}:\d{2}$/.test(element.value || '') ? 'HH:mm:ss' : 'HH:mm') : '',
       name: element.getAttribute('name') || '',
       nativeId: element.id || '',
       placeholder: element.getAttribute('placeholder') || '',
@@ -766,6 +769,7 @@
   function normalizeComparable(value) {
     const date = normalizeText(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
     if (date) return `${date[3]}-${date[2]}-${date[1]}`;
+    if (/^\d{2}:\d{2}:00$/.test(normalizeText(value))) return normalizeText(value).slice(0, 5);
     return normalizeText(value)
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -869,7 +873,10 @@
 
     const dateText = kind === 'date' && element.type === 'text';
     if (dateText && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return { ok: false, reason: 'La fecha debe tener formato AAAA-MM-DD.' };
-    element.value = dateText && value ? value.split('-').reverse().join('/') : value;
+    const timeText = kind === 'time' && element.type === 'text';
+    if (timeText && value && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value)) return { ok: false, reason: 'La hora debe tener formato HH:mm o HH:mm:ss.' };
+    const nativeValue = timeText && value ? (/^\d{1,2}:\d{2}:\d{2}$/.test(element.value) ? `${value.slice(0, 5)}:${value.slice(6) || '00'}` : value.slice(0, 5)) : value;
+    element.value = dateText && value ? value.split('-').reverse().join('/') : nativeValue;
     dispatchInputEvents(element);
     if (dateText) element.blur();
     if (normalizeComparable(element.value) === normalizeComparable(value)) rememberSuccess(fieldId, 'input-events', value).catch(() => {});
@@ -2404,7 +2411,7 @@
       return `<article class="field setting">
       <div class="field-head"><div class="field-title"><span class="index">${index + 1}</span><div class="field-name"><label>${escapeHtml(action.label)}</label>${field ? `<span class="badge">${escapeHtml(fieldTypeLabel(field))}</span>` : ''}</div></div></div>
       ${state.voicePreview ? '' : `<label><input type="checkbox" data-voice-include="${index}" ${action.include ? 'checked' : ''}> Incluir este cambio ${action.needs_confirmation ? '· Requiere tu confirmación' : ''}</label>`}
-      <div>${escapeHtml(action.value === 'true' ? 'Sí' : action.value === 'false' ? 'No' : action.value)}</div>
+      <div>${escapeHtml(action.value === 'true' ? 'Sí' : action.value === 'false' ? 'No' : field?.displayFormat === 'DD/MM/YYYY' && /^\d{4}-\d{2}-\d{2}$/.test(action.value) ? action.value.split('-').reverse().join('/') : action.value)}</div>
       <small>Dijiste: ${escapeHtml(action.evidence)}</small>
       ${action.errors.map(error => `<span class="validation-error">${escapeHtml(error)}</span>`).join('')}
       ${action.result ? `<span>${escapeHtml(action.result)}</span>` : ''}
@@ -2451,7 +2458,7 @@
       await refreshFrames(); scanFields();
       if (visibleFields().some(field => ['combobox', 'autocomplete'].includes(field.kind) && !field.options.length)) await analyzeOptions();
       scanFields(); renderPanel();
-      const fields = visibleFields().map(({ id, label, kind, options, rules }) => ({ id, label, kind, options, rules: { required: rules.required, pattern: rules.pattern, min: rules.min, max: rules.max, maxlength: rules.maxlength } }));
+      const fields = visibleFields().map(({ id, label, kind, options, rules, displayFormat }) => ({ id, label, kind, options, display_format: displayFormat || '', rules: { required: rules.required, pattern: rules.pattern, mask: rules.mask, hint: rules.hint, min: rules.min, max: rules.max, maxlength: rules.maxlength } }));
       const response = await sendExtensionMessage({ type: 'JALFIA_INTERPRET', transcript: state.voiceTranscript, fields });
       if (!response?.ok) throw new Error(response?.error || 'No pude interpretar el dictado.');
       state.voiceCorrectedText = response.corrected_text;
