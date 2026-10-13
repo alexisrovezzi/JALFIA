@@ -2404,7 +2404,7 @@
       ${action.result ? `<span>${escapeHtml(action.result)}</span>` : ''}
     </article>`; }).join('');
     return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
-      ${state.textInputMode ? `<div class="setting"><label for="jalfia-typed-dictation">Modo de prueba: escribir o pegar dictado</label>
+      ${state.textInputMode ? `<div class="setting"><label for="jalfia-typed-dictation">Modo escritura: escribir o pegar dictado</label>
         <textarea id="jalfia-typed-dictation" data-typed-dictation rows="4" maxlength="20000" placeholder="Escribí lo que dirías al micrófono…" ${state.voiceBusy ? 'disabled' : ''}>${escapeHtml(state.typedDictation)}</textarea>
         <button class="primary" type="button" data-action="interpret-typed" ${state.voiceBusy ? 'disabled' : ''}>${state.voiceTarget ? 'Interpretar texto' : 'Elegir destino y continuar'}</button>
         ${state.voiceTarget ? '<button class="secondary" type="button" data-action="choose-text-destination">Cambiar destino</button>' : ''}
@@ -2423,7 +2423,7 @@
         ${state.voicePreview ? `<button class="secondary" type="button" data-action="voice-preview-back">Volver</button><button class="primary" type="button" data-action="apply-voice" ${state.voiceBusy || state.voiceActions.some(action => action.include && action.errors.length) ? 'disabled' : ''}>Confirmar y aplicar</button>` : `<button class="secondary" type="button" data-action="prev-voice" title="Cambio anterior" aria-label="Cambio anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"></path></svg></button><button class="primary" type="button" data-action="voice-preview">Vista previa</button><button class="secondary" type="button" data-action="next-voice" title="Cambio siguiente" aria-label="Cambio siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>`}
       </div>` : ''}
       <div class="voice-toolbar">
-        <button type="button" data-action="text-input-mode" title="Modo de prueba: escribir o pegar dictado" aria-label="Modo de prueba: escribir o pegar dictado" aria-pressed="${state.textInputMode}" ${state.listening || state.voiceBusy ? 'disabled' : ''}>Aa</button>
+        <button type="button" data-action="text-input-mode" title="Modo escritura: escribir o pegar dictado" aria-label="Modo escritura: escribir o pegar dictado" aria-pressed="${state.textInputMode}" ${state.listening || state.voiceBusy ? 'disabled' : ''}>Aa</button>
         <button type="button" data-action="interpret-voice" title="Interpretar nuevamente" aria-label="Interpretar nuevamente" ${!state.voiceTranscript || state.listening || state.voiceBusy ? 'disabled' : ''}>${refreshIcon()}</button>
         <button type="button" data-action="manual-mode" title="Completar manualmente" aria-label="Completar manualmente" ${state.voiceBusy || state.listening ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"></path></svg></button>
         <button type="button" data-action="show-recognized" title="Ver texto reconocido" aria-label="Ver texto reconocido" aria-pressed="${state.voiceShowText}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
