@@ -2134,11 +2134,11 @@
     if (state.voiceBusy || state.listening || state.analyzingOptions) return;
     state.cancelScopeSelection?.();
     showStatus('Hacé clic para elegir un formulario o mantené apretado y arrastrá para seleccionar un área. Un solo campo permite dictar allí. Escape cancela.');
-    let candidate = null, previousOutline = '', previousOffset = '', glow = null;
+    let candidate = null, previousOutline = '', previousOffset = '', previousShadow = '', glow = null;
     let dragStart = null, dragRect = null, dragBox = null, dragGlow = null, suppressClick = false;
     const clearHighlight = () => {
-      if (candidate) { candidate.element.style.outline = previousOutline; candidate.element.style.outlineOffset = previousOffset; }
       glow?.cancel(); glow = null;
+      if (candidate) { candidate.element.style.outline = previousOutline; candidate.element.style.outlineOffset = previousOffset; candidate.element.style.boxShadow = previousShadow; }
     };
     const move = event => {
       if (dragStart) {
@@ -2163,9 +2163,13 @@
       clearHighlight(); candidate = next;
       if (candidate) {
         previousOutline = candidate.element.style.outline; previousOffset = candidate.element.style.outlineOffset;
-        candidate.element.style.outline = '3px solid #2563eb'; candidate.element.style.outlineOffset = '3px';
+        previousShadow = candidate.element.style.boxShadow || '';
+        candidate.element.style.outline = '3px solid #2563eb'; candidate.element.style.outlineOffset = '-3px';
+        candidate.element.style.boxShadow = 'inset 0 0 0 2px #2563eb, inset 0 0 18px 3px #2563eb66, 0 0 14px 3px #2563eb66';
         if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) glow = candidate.element.animate?.([
-          { boxShadow: '0 0 8px 2px #2563eb66' }, { boxShadow: '0 0 24px 6px #2563ebaa' }, { boxShadow: '0 0 8px 2px #2563eb66' }
+          { boxShadow: 'inset 0 0 0 2px #2563eb, inset 0 0 12px 2px #2563eb66, 0 0 8px 2px #2563eb66' },
+          { boxShadow: 'inset 0 0 0 2px #2563eb, inset 0 0 24px 6px #2563ebaa, 0 0 24px 6px #2563ebaa' },
+          { boxShadow: 'inset 0 0 0 2px #2563eb, inset 0 0 12px 2px #2563eb66, 0 0 8px 2px #2563eb66' }
         ], { duration: 1100, iterations: Infinity });
       }
     };

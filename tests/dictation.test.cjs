@@ -111,6 +111,19 @@ test('el glow se anima al señalar y se cancela al salir de la selección', () =
   assert.equal(s.listeners.size, 0);
 });
 
+test('reducir movimiento mantiene un glow fijo visible y restaura la sombra original', () => {
+  const s = setup(), input = new s.Input('');
+  input.style.boxShadow = '0 1px 2px black';
+  s.context.window.matchMedia = () => ({ matches: true });
+  input.animate = () => { throw new Error('No debe animarse con movimiento reducido'); };
+  s.context.chooseVoiceDestination();
+  s.listeners.get('pointermove')({ target: input });
+  assert.match(input.style.boxShadow, /inset/);
+  assert.equal(input.style.outlineOffset, '-3px');
+  s.state.cancelScopeSelection();
+  assert.equal(input.style.boxShadow, '0 1px 2px black');
+});
+
 test('arrastrar delimita campos y no dispara el clic posterior del formulario', () => {
   const s = setup(), a = new s.Input(''), b = new s.Input('');
   a.getBoundingClientRect = () => ({ left: 10, top: 10, right: 25, bottom: 25, width: 15, height: 15 });
