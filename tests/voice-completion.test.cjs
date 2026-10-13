@@ -20,16 +20,15 @@ function setup() {
   vm.runInContext(source.slice(source.indexOf('  async function processVoice('), source.indexOf('  function renderPanel(')), context);
   return { state, context, writes };
 }
-test('retira cambios comprobados y conserva únicamente los que faltan aplicar', async () => {
+test('retira cambios comprobados y permite volver a ofrecerlos en otra interpretación', async () => {
   const s = setup();
   await s.context.applyVoiceActions();
   assert.deepEqual(Array.from(s.state.voiceActions, action => action.field_id), ['failed']);
-  assert.equal(s.state.voiceCompletedFieldIds.has('ok'), true);
   s.state.voicePreview = true;
   await s.context.applyVoiceActions();
   assert.deepEqual(s.writes, ['ok', 'failed', 'failed']);
   await s.context.processVoice();
-  assert.deepEqual(Array.from(s.state.voiceActions, action => action.field_id), ['failed']);
+  assert.deepEqual(Array.from(s.state.voiceActions, action => action.field_id), ['ok', 'failed']);
 });
 test('cuando termina todos los cambios limpia el dictado para que no pueda reutilizarse', async () => {
   const s = setup(); s.state.voiceActions = s.state.voiceActions.slice(0, 1);
