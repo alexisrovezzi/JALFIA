@@ -96,7 +96,8 @@
         if (state.shadow) {
           showStatus(staleMessage);
           state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => {
-            if (control.dataset.action !== 'close') control.disabled = true;
+            if (!['close', 'restore'].includes(control.dataset.action)) control.disabled = true;
+            if (control.dataset.action === 'restore') { control.disabled = false; control.title = 'JALFIA se actualizó. Hacé clic para recargar la página y recuperarlo.'; }
           });
         }
         return { ok: false, error: staleMessage, reason: staleMessage };
@@ -2537,7 +2538,7 @@
   function renderBubble() {
     scanFields();
     state.lastDetectedCount = state.fields.length;
-    const tooltip = state.lastDetectedCount
+    const tooltip = state.contextInvalidated ? 'JALFIA se actualizó. Hacé clic para recargar la página y recuperarlo.' : state.lastDetectedCount
       ? `Se detectaron ${state.lastDetectedCount} campo${state.lastDetectedCount === 1 ? '' : 's'} a rellenar. Hemos encontrado nuevos cambios o campos disponibles.`
       : 'No se detectaron campos a rellenar.';
 
@@ -3143,6 +3144,9 @@
   }
 
   function restorePanel() {
+    try {
+      if (state.contextInvalidated || !chrome.runtime.id) { location.reload(); return; }
+    } catch { location.reload(); return; }
     if (!state.panel) return;
     state.minimized = false;
     applyExpandedHostSize();

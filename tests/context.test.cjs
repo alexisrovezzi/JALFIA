@@ -12,8 +12,8 @@ test('captura errores sincrónicos y asincrónicos al recargar la extensión', a
     { id: 'test', sendMessage: async () => { throw new Error('Extension context invalidated.'); } }
   ]) {
     let stopped = false, cancelled = false, message;
-    const button = { dataset: { action: 'apply-voice' } }, close = { dataset: { action: 'close' } };
-    const state = { voiceSubmit: true, shadow: { querySelectorAll: () => [button, close] }, cancelScopeSelection: () => { cancelled = true; }, stopVoice: () => { stopped = true; } };
+    const button = { dataset: { action: 'apply-voice' } }, close = { dataset: { action: 'close' } }, bubble = { dataset: { action: 'restore' }, disabled: true };
+    const state = { voiceSubmit: true, shadow: { querySelectorAll: () => [button, close, bubble] }, cancelScopeSelection: () => { cancelled = true; }, stopVoice: () => { stopped = true; } };
     const context = { state, chrome: { runtime }, stopAutoRescan() {}, showStatus: text => { message = text; } };
     vm.createContext(context);
     vm.runInContext(source.slice(source.indexOf('  async function sendExtensionMessage('), source.indexOf("  sendExtensionMessage({ type: 'JALFIA_GET_UI_SETTINGS'")), context);
@@ -24,7 +24,20 @@ test('captura errores sincrónicos y asincrónicos al recargar la extensión', a
     assert.equal(stopped && cancelled, true);
     assert.equal(button.disabled, true);
     assert.equal(close.disabled, undefined);
+    assert.equal(bubble.disabled, false);
+    assert.match(bubble.title, /Hacé clic para recargar/);
     assert.match(message, /Recargá esta página/);
+  }
+});
+
+test('la burbuja recupera un contexto invalidado recargando la página al restaurar', () => {
+  for (const [contextInvalidated, id] of [[true, 'test'], [false, undefined]]) {
+    let reloads = 0;
+    const context = { state: { contextInvalidated }, chrome: { runtime: { id } }, location: { reload() { reloads++; } } };
+    vm.createContext(context);
+    vm.runInContext(source.slice(source.indexOf('  function restorePanel('), source.indexOf('  function togglePanel(')), context);
+    context.restorePanel();
+    assert.equal(reloads, 1);
   }
 });
 
