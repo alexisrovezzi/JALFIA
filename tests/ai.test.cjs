@@ -93,6 +93,13 @@ test('no acepta una respuesta que omite la correccion del texto', async () => {
   await assert.rejects(ai.interpret(local, 'texto reconocido', []), /texto corregido requerido \(corrected_text\)/);
 });
 
+test('omite una opción que ya está seleccionada e identifica el campo con opción desconocida', async () => {
+  const field = { id: 'provider', label: 'Prestador', kind: 'combobox', options: [{ text: 'MEDICO DE PRUEBA', value: 'p1', selected: true }] };
+  const aiFor = value => setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ corrected_text: 'MEDICO DE PRUEBA', actions: [{ field_id: 'provider', value, evidence: 'MEDICO DE PRUEBA', needs_confirmation: false }] }) } }] }) }));
+  assert.equal((await aiFor('MEDICO DE PRUEBA').interpret(local, 'MEDICO DE PRUEBA', [field])).actions.length, 0);
+  await assert.rejects(aiFor('Otro').interpret(local, 'MEDICO DE PRUEBA', [field]), /Prestador/);
+});
+
 test('el prompt compatible exige texto corregido incluso cuando no hay cambios', async () => {
   let body;
   const ai = setup(async (url, options) => {

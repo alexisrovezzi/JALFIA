@@ -55,6 +55,15 @@ test('asocia overlays por ARIA sin mezclar opciones de otros campos', () => {
   assert.equal(s.context.listboxOptionsFor(unlinked).length, 0);
 });
 
+test('incluye la selección visible de Vuetify aunque no esté en la lista desplegada', () => {
+  const s = setup(), input = s.input('provider', null);
+  input.value = ''; input.readOnly = true;
+  input.closest = selector => selector === '.v-select, .v-autocomplete, .v-combobox'
+    ? { querySelectorAll: () => [{ textContent: 'MEDICO DE PRUEBA' }] } : null;
+  const field = s.context.describeField(input, 0);
+  assert.ok(field.options.some(option => option.text === 'MEDICO DE PRUEBA' && option.selected));
+});
+
 test('descarta instrucciones, filas no interactivas y opciones deshabilitadas', () => {
   const s = setup();
   const node = {

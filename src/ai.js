@@ -98,8 +98,12 @@
       if (!field || seen.has(action.field_id) || typeof action.value !== 'string' || typeof action.evidence !== 'string' || !action.evidence.trim() || !transcript.toLowerCase().includes(action.evidence.toLowerCase()) || typeof action.needs_confirmation !== 'boolean') throw new Error('La IA propuso un cambio sin un campo o evidencia válidos.');
       seen.add(action.field_id);
       if (['switch', 'checkbox', 'radio'].includes(field.kind) && !['true', 'false'].includes(action.value)) throw new Error('La IA propuso un estado Sí/No inválido.');
-      if (['select', 'combobox', 'autocomplete'].includes(field.kind) && !(field.options || []).some(option => option.text === action.value || option.value === action.value)) throw new Error('La IA propuso una opción que no existe en el campo.');
+      if (['select', 'combobox', 'autocomplete'].includes(field.kind) && !(field.options || []).some(option => option.text === action.value || option.value === action.value)) throw new Error(`La IA propuso una opción que no está entre las opciones detectadas de «${field.label || field.id}». Actualiza las opciones del campo y vuelve a interpretar.`);
     }
+    result.actions = result.actions.filter(action => {
+      const field = fields.find(field => field.id === action.field_id);
+      return !(field.options || []).some(option => option.selected && (option.text === action.value || option.value === action.value));
+    });
     return result;
   }
   root.JalfiaAI = { normalizeConfig, listModels, testConnection, interpret };

@@ -455,6 +455,14 @@
     if (['combobox', 'autocomplete'].includes(kind)) {
       if (options.length) state.optionCache.set(id, { options, loaded: true });
       else options = state.optionCache.get(id)?.options || [];
+      const wrapper = element.closest('.v-select, .v-autocomplete, .v-combobox');
+      const selectedTexts = Array.from(wrapper?.querySelectorAll('.v-select__selection, .v-select__selection-text, .v-autocomplete__selection, .v-chip__content') || [])
+        .map(node => normalizeText(node.textContent)).filter(Boolean);
+      if (!selectedTexts.length && element.readOnly && element.value) selectedTexts.push(normalizeText(element.value));
+      options = options.map(option => ({ ...option, selected: selectedTexts.includes(option.text) }));
+      for (const text of [...new Set(selectedTexts)]) {
+        if (!options.some(option => option.text === text)) options.push({ text, value: text, selected: true });
+      }
     }
 
     return {
