@@ -1007,8 +1007,9 @@
       }
     };
 
-    state.stopVoice = () => {
+    state.stopVoice = (discard = false) => {
       keepListening = false;
+      if (discard) { try { recognition.abort(); } catch {} finish(); return; }
       if (restartTimer !== null) {
         finish();
       } else {
@@ -2284,6 +2285,18 @@
     interpretTypedDictation();
   }
 
+  function cancelDictation() {
+    if (state.voiceBusy) { showStatus('Esperá a que termine la operación antes de cancelar el dictado.'); return; }
+    state.voiceSubmit = false;
+    state.cancelScopeSelection?.();
+    state.stopVoice?.(true);
+    state.voiceActions = []; state.voiceActionIndex = 0; state.voicePreview = false;
+    state.voiceTranscript = ''; state.voiceCorrectedText = ''; state.typedDictation = ''; state.voiceTarget = null;
+    state.scopeRoot = null; state.scopeElements = null; state.frameScope = 'all';
+    state.dictationWriteMode = 'cursor'; state.dictationReplaceConfirmed = false;
+    renderPanel(); showStatus('Dictado cancelado. Podés empezar uno nuevo.');
+  }
+
   function interpretTypedDictation() {
     if (state.voiceBusy || state.listening) return;
     if (!state.typedDictation.trim()) { renderPanel(); showStatus('Escribí o pegá el texto que querés usar.'); return; }
@@ -2451,6 +2464,7 @@
         ${state.voicePreview ? `<button class="secondary" type="button" data-action="voice-preview-back">Volver</button><button class="primary" type="button" data-action="apply-voice" ${state.voiceBusy || state.voiceActions.some(action => action.include && action.errors.length) ? 'disabled' : ''}>Confirmar y aplicar</button>` : `<button class="secondary" type="button" data-action="prev-voice" title="Cambio anterior" aria-label="Cambio anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"></path></svg></button><button class="primary" type="button" data-action="voice-preview">Vista previa</button><button class="secondary" type="button" data-action="next-voice" title="Cambio siguiente" aria-label="Cambio siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>`}
       </div>` : ''}
       <div class="voice-toolbar">
+        <button type="button" data-action="cancel-dictation" title="Cancelar dictado y descartar lo pendiente" aria-label="Cancelar dictado y descartar lo pendiente" ${state.voiceBusy ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button>
         <button type="button" data-action="text-input-mode" title="Modo escritura: escribir o pegar dictado" aria-label="Modo escritura: escribir o pegar dictado" aria-pressed="${state.textInputMode}" ${state.listening || state.voiceBusy ? 'disabled' : ''}>Aa</button>
         <button type="button" data-action="interpret-voice" title="Interpretar nuevamente" aria-label="Interpretar nuevamente" ${!state.voiceTranscript || state.listening || state.voiceBusy ? 'disabled' : ''}>${refreshIcon()}</button>
         <button type="button" data-action="manual-mode" title="Completar manualmente" aria-label="Completar manualmente" ${state.voiceBusy || state.listening ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"></path></svg></button>
@@ -2980,6 +2994,7 @@
   }
 
   function wirePanelEvents() {
+    state.shadow.querySelector('[data-action="cancel-dictation"]')?.addEventListener('click', cancelDictation);
     state.shadow.querySelector('[data-action="text-input-mode"]')?.addEventListener('click', () => {
       if (state.listening || state.voiceBusy) return;
       state.cancelScopeSelection?.(); state.textInputMode = !state.textInputMode; renderPanel();
