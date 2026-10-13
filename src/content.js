@@ -2504,6 +2504,8 @@
     }
     if (state.voiceTarget?.kind === 'form') { state.scopeRoot = state.voiceTarget.element; state.scopeElements = state.voiceTarget.elements || null; state.frameScope = 'top'; }
     state.voiceBusy = true;
+    showStatus('Interpretando el texto…');
+    renderPanel();
     try {
       await refreshFrames(); scanFields();
       if (visibleFields().some(field => ['combobox', 'autocomplete'].includes(field.kind) && !field.options.length)) await analyzeOptions();
@@ -2518,7 +2520,11 @@
         return { ...action, label: field.label, include: !action.needs_confirmation, errors: validateFieldValue(field, action.value) };
       });
       showStatus(state.voiceActions.length ? `${state.voiceActions.length} cambios propuestos. Los demás campos quedarán intactos.` : 'No encontré cambios aplicables en el dictado.');
-    } catch (error) { showStatus(error.message || 'No pude interpretar el dictado.'); }
+    } catch (error) {
+      state.voiceActions = []; state.voicePreview = false;
+      state.textInputMode = true; state.typedDictation = state.voiceTranscript;
+      showStatus(`${error.message || 'No pude interpretar el dictado.'} El texto se conserva: podés corregirlo y pulsar Interpretar texto.`);
+    }
     finally { state.voiceBusy = false; renderPanel(); }
   }
 
