@@ -222,6 +222,7 @@
     const role = (element.getAttribute('role') || '').toLowerCase();
     const hasPopup = (element.getAttribute('aria-haspopup') || '').toLowerCase();
     const vuetifyRoot = element.closest('.v-select, .v-autocomplete, .v-combobox');
+    if (tag === 'input' && type === 'text' && /^(fecha|date)(\b|\s)/i.test(inferLabel(element).trim()) && (/^\d{2}\/\d{2}\/\d{4}$/.test(element.value || '') || (!element.value && hasPopup === 'true'))) return 'date';
     if (role === 'switch') return 'switch';
     if (role === 'checkbox') return 'checkbox';
     if (role === 'radio') return 'radio';
@@ -467,7 +468,7 @@
       required: Boolean(element.required || element.getAttribute('aria-required') === 'true'),
       currentValue: ['switch', 'checkbox', 'radio'].includes(kind)
         ? booleanState(element)
-        : element.value || element.textContent || '',
+        : kind === 'date' ? normalizeComparable(element.value) : element.value || element.textContent || '',
       options,
       rules: readFieldRules(element),
       optionsLoaded: state.optionCache.get(id)?.loaded === true
@@ -763,6 +764,8 @@
   }
 
   function normalizeComparable(value) {
+    const date = normalizeText(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (date) return `${date[3]}-${date[2]}-${date[1]}`;
     return normalizeText(value)
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -864,9 +867,12 @@
       return { ok: true };
     }
 
-    element.value = value;
+    const dateText = kind === 'date' && element.type === 'text';
+    if (dateText && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return { ok: false, reason: 'La fecha debe tener formato AAAA-MM-DD.' };
+    element.value = dateText && value ? value.split('-').reverse().join('/') : value;
     dispatchInputEvents(element);
-    if (String(element.value) === String(value)) rememberSuccess(fieldId, 'input-events', value).catch(() => {});
+    if (dateText) element.blur();
+    if (normalizeComparable(element.value) === normalizeComparable(value)) rememberSuccess(fieldId, 'input-events', value).catch(() => {});
     return { ok: true };
   }
 
