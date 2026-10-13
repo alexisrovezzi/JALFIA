@@ -908,15 +908,14 @@
   }
 
   function startVoiceRecognition(fieldId = null) {
+    if (state.listening) {
+      state.stopVoice?.();
+      return;
+    }
     if (state.analyzingOptions) { showStatus('Espera a que termine el analisis de opciones.'); return; }
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) {
       showStatus('Este navegador no expone reconocimiento de voz para la extension.');
-      return;
-    }
-
-    if (state.listening) {
-      state.stopVoice?.();
       return;
     }
 
@@ -933,9 +932,15 @@
     let transcript = '';
     let resultCount = 0;
     let failed = false;
+    let finished = false;
+    let stopTimer = null;
 
     const finish = () => {
+      if (finished) return;
+      finished = true; keepListening = false;
       window.clearTimeout(restartTimer);
+      window.clearTimeout(stopTimer);
+      recognition.onresult = null; recognition.onend = null; recognition.onerror = null;
       state.listening = false;
       state.activeVoiceFieldId = '';
       state.recognition = null;
@@ -974,7 +979,12 @@
       if (restartTimer !== null) {
         finish();
       } else {
-        recognition.stop();
+        if (stopTimer !== null) return;
+        stopTimer = window.setTimeout(() => {
+          try { recognition.abort(); } catch {}
+          finish();
+        }, 1500);
+        try { recognition.stop(); } catch { finish(); }
       }
     };
 
@@ -988,6 +998,7 @@
     showStatus('Escuchando... Pulsa detener para terminar.');
 
     recognition.onresult = (event) => {
+      if (finished) return;
       for (; resultCount < event.results.length; resultCount += 1) {
         const result = event.results[resultCount];
         if (!result.isFinal) break;
@@ -1007,6 +1018,7 @@
       keepListening = false;
       failed = true;
       showStatus(`No pude usar el microfono: ${event.error || 'error desconocido'}.`);
+      state.stopVoice?.();
     };
 
     recognition.onend = () => {
@@ -2900,9 +2912,9 @@
     state.shadow.querySelector('[data-action="voice-preview-back"]')?.addEventListener('click', () => { state.voicePreview = false; renderPanel(); });
     if (state.voiceBusy) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => { control.disabled = true; });
     state.shadow.querySelector('[data-action="global-voice"]')?.addEventListener('click', () => {
+      if (state.listening) { state.voiceSubmit = true; startVoiceRecognition(); return; }
       if (state.voiceBusy) return;
-      if (state.listening) { state.voiceSubmit = true; startVoiceRecognition(); }
-      else chooseVoiceDestination();
+      chooseVoiceDestination();
     });
     state.shadow.querySelector('[data-action="interpret-voice"]')?.addEventListener('click', processVoice);
     state.shadow.querySelector('[data-action="apply-voice"]')?.addEventListener('click', applyVoiceActions);
