@@ -41,6 +41,7 @@
     activeVoiceFieldId: '',
     pendingFocusFieldId: '',
     draftValues: new Map(),
+    editedFieldIds: new Set(),
     domObserver: null,
     rescanTimer: 0,
     rescanInterval: 0,
@@ -463,7 +464,7 @@
     for (const map of [state.optionCache, state.draftValues]) {
       for (const id of map.keys()) if (!ids.has(id)) map.delete(id);
     }
-    for (const set of [state.hiddenFieldIds, state.formClearFieldIds]) {
+    for (const set of [state.hiddenFieldIds, state.formClearFieldIds, state.editedFieldIds]) {
       for (const id of set) if (!ids.has(id)) set.delete(id);
     }
     return state.fields;
@@ -858,6 +859,7 @@
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
     state.draftValues.set(fieldId, value);
+    state.editedFieldIds.add(fieldId);
     state.formClearFieldIds.delete(fieldId);
     state.pendingFocusFieldId = fieldId;
     showStatus('Voz transcripta.');
@@ -2169,7 +2171,7 @@
         const selected = field.kind === 'select' ? element?.selectedOptions?.[0]?.textContent : '';
         const verified = field.frameId ? result.ok && result.verified : result.ok && (normalizeComparable(actual) === normalizeComparable(action.value) || normalizeComparable(selected) === normalizeComparable(action.value));
         action.result = verified ? '✓ Completado y comprobado' : result.reason || 'No se pudo comprobar el valor aplicado';
-        if (verified) { applied++; action.include = false; state.draftValues.set(field.id, action.value); }
+        if (verified) { applied++; action.include = false; state.draftValues.delete(field.id); state.editedFieldIds.delete(field.id); state.formClearFieldIds.delete(field.id); }
       }
       showStatus(`${applied} de ${actions.length} cambios completados y comprobados.`);
     } catch (error) { showStatus(error.message); }
@@ -2270,15 +2272,23 @@
     if (!state.shadow) return;
 
     state.shadow.querySelectorAll('[data-jalfia-value]').forEach((input) => {
-      state.draftValues.set(input.dataset.jalfiaValue, input.value);
+      if (state.editedFieldIds.has(input.dataset.jalfiaValue)) {
+        state.draftValues.set(input.dataset.jalfiaValue, input.value);
+      }
     });
   }
 
   function collectValues() {
-    updateDraftValues();
-    return Array.from(state.shadow.querySelectorAll('[data-jalfia-value]'))
-      .map((input) => ({ id: input.dataset.jalfiaValue, value: input.value }))
-      .filter(({ value }) => String(value).trim() !== '');
+    return collectPreviewValues().map(({ id, value }) => ({ id, value }));
+  }
+
+  function hasPendingFieldChange(field, value) {
+    if (state.formClearFieldIds.has(field.id)) return true;
+    if (!state.editedFieldIds.has(field.id) || String(value).trim() === '') return false;
+    if (String(value) === String(field.currentValue ?? '')) return false;
+    if (field.kind === 'select' && field.options.some(option => option.selected &&
+      (String(value) === String(option.text) || String(value) === String(option.value)))) return false;
+    return true;
   }
 
   function collectPreviewValues() {
@@ -2294,7 +2304,7 @@
             : '',
         clearReal: state.formClearFieldIds.has(field.id)
       }))
-      .filter(({ value, clearReal }) => clearReal || String(value).trim() !== '')
+      .filter(({ id, value }) => hasPendingFieldChange(state.fields.find(field => field.id === id), value))
       .map(item => ({ ...item, errors: validateFieldValue(state.fields.find(field => field.id === item.id), item.value) }));
   }
 
@@ -2375,7 +2385,7 @@
   function openPreview() {
     state.previewValues = collectPreviewValues();
     if (!state.previewValues.length) {
-      showStatus('No hay valores cargados para completar.');
+      showStatus('No hay cambios pendientes para completar.');
       return;
     }
 
@@ -2390,7 +2400,7 @@
 
   async function fillForm(values = collectValues()) {
     if (!values.length) {
-      showStatus('No hay valores cargados para completar.');
+      showStatus('No hay cambios pendientes para completar.');
       return;
     }
 
@@ -2399,6 +2409,15 @@
       ...(await setFieldValue(id, value))
     })));
     const failures = results.filter((result) => !result.ok);
+    for (const result of results.filter(result => result.ok)) {
+      const applied = values.find(item => item.id === result.id);
+      if (state.draftValues.get(result.id) === applied.value) {
+        state.draftValues.delete(result.id);
+        state.editedFieldIds.delete(result.id);
+        state.formClearFieldIds.delete(result.id);
+      }
+    }
+    renderPanel();
 
     if (failures.length) {
       showStatus(`Complete con observaciones: ${failures.length} campo${failures.length === 1 ? '' : 's'} no se pudo aplicar.`);
@@ -2478,6 +2497,7 @@
   function recalculatePanel() {
     state.optionCache.clear();
     state.draftValues.clear();
+    state.editedFieldIds.clear();
     state.formClearFieldIds.clear();
     state.hiddenFieldIds.clear();
     state.previewValues = [];
@@ -2696,10 +2716,12 @@
     });
     state.shadow.querySelectorAll('[data-jalfia-value]').forEach((input) => {
       input.addEventListener('input', () => {
+        state.editedFieldIds.add(input.dataset.jalfiaValue);
         state.draftValues.set(input.dataset.jalfiaValue, input.value);
         state.formClearFieldIds.delete(input.dataset.jalfiaValue);
       });
       input.addEventListener('change', () => {
+        state.editedFieldIds.add(input.dataset.jalfiaValue);
         state.draftValues.set(input.dataset.jalfiaValue, input.value);
         state.formClearFieldIds.delete(input.dataset.jalfiaValue);
       });

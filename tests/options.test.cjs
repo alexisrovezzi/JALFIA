@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
 function setup() {
-  const state = { optionCache: new Map(), draftValues: new Map(), hiddenFieldIds: new Set(), formClearFieldIds: new Set(), fields: [], panel: { style: {} } };
+  const state = { optionCache: new Map(), draftValues: new Map(), editedFieldIds: new Set(), hiddenFieldIds: new Set(), formClearFieldIds: new Set(), fields: [], panel: { style: {} } };
   let menus = [], fields = [];
   const document = {
     activeElement: null,
