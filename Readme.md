@@ -4,7 +4,7 @@ JALFIA es una extension de Chrome para detectar formularios web y completar camp
 
 ## Estado actual
 
-- Mantiene memoria local de la estructura de cada pantalla y estrategias de interaccion comprobadas. No persiste valores ingresados, transcripciones, opciones ni mensajes de validacion. En Ajustes muestra los campos y estrategias recordados del documento principal y de los iframes, y permite olvidarlos. Reanalizar mantiene el aprendizaje. La memoria vuelve a comprobarse contra el DOM actual; no reemplaza la deteccion. Se limita a 200 pantallas con antiguedad maxima de 90 dias.
+- Mantiene memoria local de la estructura de cada pantalla y estrategias de interaccion comprobadas. No persiste valores ingresados, transcripciones, opciones ni mensajes de validacion. En Ajustes muestra un resumen compacto y un detalle desplegable por documento. Borrar memoria de esta pagina incluye la pantalla principal y sus iframes disponibles. Reanalizar mantiene el aprendizaje. La memoria vuelve a comprobarse contra el DOM actual; no reemplaza la deteccion. Se limita a 200 pantallas con antiguedad maxima de 90 dias.
 
 - Detecta campos visibles en la pestana activa: `input`, `textarea`, `select` y elementos `contenteditable`.
 - Infere etiquetas desde `label`, `aria-label`, `aria-labelledby`, `placeholder`, `name`, `id` y texto cercano.

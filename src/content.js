@@ -1233,6 +1233,10 @@
       .voice-view .primary { flex:0 0 auto; min-height:42px; padding:10px 16px; }
       .settings h2 { margin: 0; color: var(--ink); font-size: 16px; }
       .setting { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+      .memory-details summary { cursor: pointer; color: var(--ink); }
+      .memory-table-wrap { max-height: 220px; overflow: auto; margin-top: 8px; }
+      .memory-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--ink); }
+      .memory-table th, .memory-table td { padding: 6px 4px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
       .setting-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); }
       .setting input[type="range"] { padding: 0; accent-color: var(--blue); }
       .setting input[type="checkbox"] { width: 20px; min-height: 20px; height: 20px; accent-color: var(--blue); }
@@ -2061,15 +2065,26 @@
   }
 
   function renderSettings() {
+    const memories = [
+      ...(state.memory ? [{ title: 'Página principal', memory: state.memory }] : []),
+      ...state.frames.filter(frame => frame.memory).map(frame => ({ title: frame.title, memory: frame.memory }))
+    ];
+    const fields = memories.flatMap(item => item.memory.fields);
+    const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
-      <div class="setting"><h2>Memoria del documento principal</h2>
-        <p>${state.memory ? `${state.memory.known ? 'Pantalla conocida' : 'Estructura registrada'} · ${state.memory.fields.length} campos · ${state.memory.fields.filter(field => field.strategy).length} estrategias comprobadas` : 'Todavía no hay memoria disponible.'}</p>
-        ${state.memory?.fields?.filter(field => field.strategy).map(field => `<small>${escapeHtml(field.label)}: ${escapeHtml({ 'click-state': 'cambio mediante clic', 'select-option': 'selección de una opción', 'input-events': 'ingreso y eventos de edición', 'contenteditable-events': 'edición de contenido' }[field.strategy] || field.strategy)}</small>`).join('') || ''}
+      <div class="setting"><h2>Memoria de esta página</h2>
+        <small>${fields.length ? `${fields.length} campos · ${fields.filter(field => field.strategy).length} estrategias comprobadas · ${useful.length} documentos con campos` : 'Todavía no hay campos recordados en esta página.'}</small>
         <small>Solo estructura y funcionamiento. No guarda valores, dictados ni opciones.</small>
-        <button class="secondary" type="button" data-action="memory-refresh">Reanalizar conservando memoria</button><button class="secondary" type="button" data-action="memory-forget">Olvidar esta pantalla</button>
+        ${memories.length ? `<details class="memory-details"><summary>Ver detalle de memoria (${memories.length} documentos)</summary>
+          <div class="memory-table-wrap"><table class="memory-table"><thead><tr><th scope="col">Documento</th><th scope="col">Campos</th><th scope="col">Estrategias</th></tr></thead><tbody>
+            ${memories.map(item => `<tr><td>${escapeHtml(item.title)}</td><td>${item.memory.fields.length}</td><td>${item.memory.fields.filter(field => field.strategy).length}</td></tr>`).join('')}
+          </tbody></table></div>
+        </details>` : ''}
+        <button class="secondary" type="button" data-action="memory-refresh">Reanalizar conservando memoria</button>
+        <button class="secondary" type="button" data-action="memory-forget">Borrar memoria de esta página</button>
+        <small>El borrado incluye la pantalla principal y sus iframes disponibles.</small>
       </div>
-      ${state.frames.filter(frame => frame.memory).map(frame => `<div class="setting"><strong>Memoria: ${escapeHtml(frame.title)}</strong><small>${frame.memory.fields.length} campos · ${frame.memory.fields.filter(field => field.strategy).length} estrategias comprobadas</small><button class="secondary" type="button" data-action="forget-frame-memory" data-frame-id="${frame.frameId}">Olvidar esta pantalla del iframe</button></div>`).join('')}
       <div class="setting"><label for="jalfia-frame-scope">Documentos a analizar</label><select id="jalfia-frame-scope" data-action="frame-scope"><option value="all" ${state.frameScope === 'all' ? 'selected' : ''}>Página e iframes disponibles</option><option value="top" ${state.frameScope === 'top' ? 'selected' : ''}>Solo página principal</option>${state.frames.map(frame => `<option value="${frame.frameId}" ${state.frameScope === String(frame.frameId) ? 'selected' : ''}>${escapeHtml(frame.title)} (iframe ${frame.frameId})</option>`).join('')}</select></div>
       <div class="setting">
         <div class="setting-heading"><label for="jalfia-opacity">Opacidad</label><output for="jalfia-opacity" data-opacity-value>${Math.round(state.opacity * 100)}%</output></div>
@@ -2605,25 +2620,31 @@
     });
   }
 
+  async function forgetPageMemory() {
+    const snapshot = memorySnapshot();
+    const results = await Promise.allSettled([
+      chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot }).then(response => {
+        if (!response?.ok) throw new Error(response?.error || 'No pude borrar la memoria principal.');
+        state.memoryForgotten = JSON.stringify(snapshot); state.memory = null; state.memorySignature = '';
+      }),
+      ...state.frames.map(frame => frameRequest(frame, 'forget-memory').then(response => {
+        if (!response?.ok) throw new Error(response?.reason || 'No pude borrar la memoria del iframe.');
+        frame.memory = null;
+      }))
+    ]);
+    const failures = results.filter(result => result.status === 'rejected');
+    renderPanel();
+    showStatus(failures.length
+      ? `No se pudo borrar la memoria de ${failures.length} documentos. Vuelve a analizar y reintenta.`
+      : 'Memoria de esta página eliminada. Reanaliza para registrarla nuevamente.');
+  }
+
   function wirePanelEvents() {
-    state.shadow.querySelectorAll('[data-action="forget-frame-memory"]').forEach(button => button.addEventListener('click', async () => {
-      const frame = state.frames.find(frame => String(frame.frameId) === button.dataset.frameId);
-      if (!frame) return;
-      const response = await frameRequest(frame, 'forget-memory');
-      if (!response?.ok) { showStatus(response?.reason || 'No pude borrar la memoria del iframe.'); return; }
-      frame.memory = null; renderPanel(); showStatus('Memoria de la pantalla del iframe eliminada.');
-    }));
     state.shadow.querySelector('[data-action="memory-refresh"]')?.addEventListener('click', async () => {
       state.memoryForgotten = ''; state.memorySignature = '';
       await analyzeFields(); await syncMemory(true); renderPanel();
     });
-    state.shadow.querySelector('[data-action="memory-forget"]')?.addEventListener('click', async () => {
-      const snapshot = memorySnapshot();
-      const response = await chrome.runtime.sendMessage({ type: 'JALFIA_MEMORY_FORGET', snapshot });
-      if (!response?.ok) { showStatus(response?.error || 'No pude borrar la memoria.'); return; }
-      state.memoryForgotten = JSON.stringify(snapshot); state.memory = null; state.memorySignature = '';
-      renderPanel(); showStatus('Memoria de esta pantalla eliminada. Reanaliza para registrarla nuevamente.');
-    });
+    state.shadow.querySelector('[data-action="memory-forget"]')?.addEventListener('click', forgetPageMemory);
     state.shadow.querySelector('[data-action="frame-scope"]')?.addEventListener('change', event => {
       state.frameScope = event.target.value; state.scopeRoot = null; state.previewMode = false;
       renderPanel(); showStatus('Alcance actualizado.');
