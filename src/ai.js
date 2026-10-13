@@ -95,7 +95,13 @@
     for (const action of result.actions) {
       if (!action || typeof action !== 'object' || Array.isArray(action)) throw new Error('La IA devolvió un cambio con formato inválido. No se aplicó ninguno.');
       const field = fields.find(field => field.id === action.field_id);
-      if (!field || seen.has(action.field_id) || typeof action.value !== 'string' || typeof action.evidence !== 'string' || !action.evidence.trim() || !transcript.toLowerCase().includes(action.evidence.toLowerCase()) || typeof action.needs_confirmation !== 'boolean') throw new Error('La IA propuso un cambio sin un campo o evidencia válidos.');
+      if (!field) throw new Error('La IA propuso un cambio para un identificador de campo que no existe en la selección. Vuelve a interpretar.');
+      const label = field.label || field.id;
+      if (seen.has(action.field_id)) throw new Error(`La IA propuso más de un cambio para «${label}». Vuelve a interpretar.`);
+      if (typeof action.value !== 'string') throw new Error(`La IA devolvió un valor con formato inválido para «${label}».`);
+      const comparableEvidence = value => value.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (typeof action.evidence !== 'string' || !action.evidence.trim() || !comparableEvidence(transcript).includes(comparableEvidence(action.evidence))) throw new Error(`La IA no justificó el cambio de «${label}» con una cita del texto ingresado. Vuelve a interpretar.`);
+      if (typeof action.needs_confirmation !== 'boolean') throw new Error(`La IA no indicó correctamente la confirmación para «${label}».`);
       seen.add(action.field_id);
       if (['switch', 'checkbox', 'radio'].includes(field.kind) && !['true', 'false'].includes(action.value)) throw new Error('La IA propuso un estado Sí/No inválido.');
       if (['select', 'combobox', 'autocomplete'].includes(field.kind) && !(field.options || []).some(option => option.text === action.value || option.value === action.value)) throw new Error(`La IA propuso una opción que no está entre las opciones detectadas de «${field.label || field.id}». Actualiza las opciones del campo y vuelve a interpretar.`);

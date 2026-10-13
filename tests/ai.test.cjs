@@ -93,6 +93,13 @@ test('no acepta una respuesta que omite la correccion del texto', async () => {
   await assert.rejects(ai.interpret(local, 'texto reconocido', []), /texto corregido requerido \(corrected_text\)/);
 });
 
+test('la evidencia admite saltos de línea como espacios pero rechaza texto inventado', async () => {
+  const fields = [{ id: 'evolution', label: 'Evolución', kind: 'text' }];
+  const aiFor = evidence => setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ corrected_text: 'Texto ficticio.', actions: [{ field_id: 'evolution', value: 'Texto ficticio.', evidence, needs_confirmation: false }] }) } }] }) }));
+  assert.equal((await aiFor('En Evolución escribí: Texto ficticio.').interpret(local, 'En Evolución escribí:\nTexto ficticio.', fields)).actions.length, 1);
+  await assert.rejects(aiFor('Texto no mencionado.').interpret(local, 'En Evolución escribí:\nTexto ficticio.', fields), /Evolución.*cita/);
+});
+
 test('omite una opción que ya está seleccionada e identifica el campo con opción desconocida', async () => {
   const field = { id: 'provider', label: 'Prestador', kind: 'combobox', options: [{ text: 'MEDICO DE PRUEBA', value: 'p1', selected: true }] };
   const aiFor = value => setup(async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ corrected_text: 'MEDICO DE PRUEBA', actions: [{ field_id: 'provider', value, evidence: 'MEDICO DE PRUEBA', needs_confirmation: false }] }) } }] }) }));
