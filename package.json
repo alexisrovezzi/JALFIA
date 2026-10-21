@@ -1,0 +1,9 @@
+{
+  "name": "jalfia",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "metadata": "node scripts/package.cjs metadata",
+    "package": "node scripts/package.cjs"
+  }
+}

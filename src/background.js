@@ -1,7 +1,30 @@
 importScripts('ai.js');
 importScripts('frames.js');
 importScripts('memory.js');
+importScripts('updates.js');
 const storageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+let productReady;
+function getProduct() {
+  if (productReady) return productReady;
+  productReady = fetch(chrome.runtime.getURL('src/build-info.json')).then(response => response.ok ? response.json() : {}).catch(() => ({})).then(info => ({
+    name: chrome.runtime.getManifest().name,
+    version: chrome.runtime.getManifest().version,
+    commit: /^[a-f0-9]{40}$/.test(info.commit) ? info.commit : null,
+    dirty: info.dirty === true,
+    generatedAt: info.generatedAt || null
+  })).then(installed => ({ installed, updates: JalfiaUpdates.create({ storage: chrome.storage.local, fetcher: fetch, installed }) }));
+  return productReady;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (sender.id !== chrome.runtime.id || !['JALFIA_GET_BUILD_INFO', 'JALFIA_CHECK_UPDATES'].includes(message?.type)) return false;
+  (async () => {
+    await storageReady;
+    const { installed, updates } = await getProduct();
+    return { ok: true, installed, updates: message.type === 'JALFIA_CHECK_UPDATES' ? await updates.check(message.force === true) : await updates.cached() };
+  })().then(respond, error => respond({ ok: false, error: error.message }));
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message?.type?.startsWith('JALFIA_')) return false;

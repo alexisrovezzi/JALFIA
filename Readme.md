@@ -1,5 +1,39 @@
 # JALFIA
 
+## Descargas e instrucciones
+
+El enlace `Paquetes publicados` abre las publicaciones del workflow en GitHub. Cuando JALFIA identifica una publicacion disponible, `Descargar ZIP` descarga directamente su paquete con los metadatos del commit. Usar ese paquete para conservar la identificacion del codigo instalado y la comparacion de actualizaciones. `Instrucciones de actualizacion` abre esta seccion.
+
+Las [publicaciones de desarrollo](https://github.com/alexisrovezzi/JALFIA/releases) incluyen un paquete `JALFIA-<version>-<commit>.zip`. Cada push a `main` ejecuta las pruebas y, si pasan, publica automaticamente una prerelease con el ZIP, el commit y las novedades. Las publicaciones de desarrollo pueden compartir el numero de version: el commit identifica la compilacion. Si todavia no aparece el paquete del commit, su publicacion puede estar en curso o haber fallado; consultá GitHub Actions. Antes de la primera ejecucion exitosa no habra un paquete preparado.
+
+Para instalar por primera vez, descargar el ZIP adjunto a la publicacion (no el archivo automatico `Source code`), extraerlo en una carpeta permanente y cargar esa carpeta desde `chrome://extensions` > Modo desarrollador > Cargar descomprimida.
+
+Para actualizar una instalacion existente:
+
+1. Guardar las ediciones pendientes en las paginas abiertas.
+2. Descargar el ZIP de la publicacion elegida.
+3. Extraer y reemplazar los archivos dentro de la **misma carpeta** que Chrome tiene cargada. No extraer dentro de una subcarpeta. No eliminar la extension de Chrome.
+4. En `chrome://extensions`, pulsar recargar en JALFIA.
+5. Recargar las paginas donde se utiliza la extension.
+6. Abrir Ajustes > Acerca de JALFIA y comprobar el commit instalado.
+
+Descargar el ZIP no instala la actualizacion. La campanita consulta publicaciones al abrir el panel, como maximo una vez por hora automaticamente; `Buscar novedades` permite comprobar manualmente. No hay consultas periodicas con el panel cerrado. Solo avisa cuando existe un paquete publicado cuyo commit desciende del instalado. Un error conserva el ultimo resultado con su fecha; no significa que la instalacion este actualizada. La consulta publica a GitHub no incluye formularios, dictados ni claves de IA.
+
+### Metadatos y empaquetado local
+
+Requiere Node.js 24 y Git. No requiere instalar dependencias npm.
+
+```powershell
+npm run metadata
+npm run package
+```
+
+`metadata` genera `src/build-info.json` con el commit local, fecha y cambios pendientes en los archivos distribuidos. Regenerarlo despues de cambiar de commit o modificar el codigo; despues recargar la extension y las paginas abiertas. El indicador de cambios locales es una fotografia del momento de generacion, no un monitor del repositorio. Sin este archivo, el panel informa `Commit no disponible`.
+
+`package` regenera los metadatos y escribe el ZIP en `dist/`. Incluye `manifest.json`, `src/` y este documento; excluye Git, pruebas y demos. Ambos resultados estan ignorados por Git. La version se toma del manifiesto y no se incrementa automaticamente.
+
+El workflow `.github/workflows/development-release.yml` publica con etiqueta `dev-<SHA completo>`. Reejecutar el workflow permite completar la misma publicacion sin duplicarla. Solo el trabajo de publicacion tiene permiso de escritura sobre contenidos. La primera publicacion real ocurre despues de integrar estos cambios en `main`; comprobar su resultado y el ZIP adjunto en GitHub Actions y Releases.
+
 JALFIA es una extension de Chrome para detectar formularios web, completar campos de forma asistida e insertar dictados en un destino seleccionado. Combina inspeccion del DOM, reglas deterministicas e interpretacion opcional por IA, con revision y confirmacion antes de escribir sobre la pagina.
 
 ## Estado actual

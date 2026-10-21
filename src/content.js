@@ -56,6 +56,9 @@
     hiddenFieldIds: new Set(),
     opacity: 0.96,
     settingsMode: false,
+    buildInfo: null,
+    updateInfo: {},
+    updatesBusy: false,
     voiceMode: true,
     voiceTranscript: '',
     voiceCorrectedText: '',
@@ -1359,6 +1362,7 @@
 
       .header-top {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
@@ -1371,6 +1375,13 @@
         min-width: 0;
         gap: 12px;
       }
+
+      .update-bell { position: relative; }
+      .update-bell.has-updates::after { content: ''; position: absolute; top: 3px; right: 3px; width: 9px; height: 9px; border-radius: 50%; background: #ffdc45; border: 2px solid #24355e; }
+      .about { display: grid; gap: 10px; overflow-wrap: anywhere; }
+      .about-links { display: flex; flex-wrap: wrap; gap: 12px; }
+      .about a { color: var(--ink); text-decoration: underline; }
+      .about a:focus-visible, .about button:focus-visible, .update-bell:focus-visible { outline: 3px solid #f59e0b; outline-offset: 3px; }
 
       .logo {
         width: 42px;
@@ -1992,7 +2003,7 @@
         }
 
         .subtitle {
-          display: none;
+          font-size: 11px;
         }
 
         .meta {
@@ -2398,6 +2409,61 @@
     return { ok: false, reason: 'No pude confirmar la inserción en Google Docs. Revisá la hoja: no se reenviará este dictado automáticamente.' };
   }
 
+  const PRODUCT_REPO = 'https://github.com/alexisrovezzi/JALFIA';
+  function updateLabel() {
+    return state.updateInfo.status === 'available' ? 'Hay una actualización de desarrollo disponible' : 'Consultar novedades de JALFIA';
+  }
+  function renderAbout() {
+    const installed = state.buildInfo || { name: chrome.runtime.getManifest().name, version: chrome.runtime.getManifest().version };
+    const info = state.updateInfo, publication = info.publication;
+    const labels = { identical: 'Tu commit coincide con la publicación.', available: publication?.version === installed.version ? 'Hay una nueva compilación de desarrollo disponible.' : 'Hay una actualización de desarrollo disponible.', ahead: 'Tu instalación está adelantada respecto de la publicación.', diverged: 'Tu instalación y la publicación tienen historias diferentes.', unknown: 'No se puede determinar la relación con la publicación.', unavailable: 'Todavía no hay un paquete de desarrollo disponible.' };
+    const link = (url, label) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    return `<h2>Acerca de ${escapeHtml(installed.name)}</h2>
+      <div>Versión instalada: <strong>${escapeHtml(installed.version)}</strong></div>
+      <div>Commit: ${installed.commit ? `${link(`${PRODUCT_REPO}/commit/${installed.commit}`, installed.commit.slice(0, 7))} <button type="button" data-action="copy-commit" aria-label="Copiar commit completo">Copiar</button>` : 'Commit no disponible'}</div>
+      ${installed.dirty ? '<strong>Con cambios locales</strong>' : ''}
+      ${!installed.commit ? '<small>En desarrollo, ejecutá npm run metadata y recargá la extensión y esta página.</small>' : ''}
+      <p role="status">${escapeHtml(labels[info.status] || 'Todavía no se comprobaron las novedades.')}</p>
+      ${publication ? `<div>Publicación de desarrollo: ${escapeHtml(publication.version)} · ${link(`${PRODUCT_REPO}/commit/${publication.commit}`, publication.commit.slice(0, 7))}</div><div class="about-links">${link(publication.url, 'Ver publicación')}${link(publication.download, 'Descargar ZIP')}</div>` : ''}
+      ${info.checkedAt ? `<small>Última comprobación exitosa: ${escapeHtml(new Date(info.checkedAt).toLocaleString())}</small>` : ''}
+      ${info.error ? `<p role="alert">${escapeHtml(info.error)} El resultado anterior puede estar desactualizado.</p>` : ''}
+      <button type="button" data-action="check-updates" ${state.updatesBusy ? 'disabled' : ''}>${state.updatesBusy ? 'Buscando novedades…' : 'Buscar novedades'}</button>
+      <div class="about-links">${link(PRODUCT_REPO, 'Abrir repositorio')}${link(`${PRODUCT_REPO}/releases`, 'Paquetes publicados')}${link(`${PRODUCT_REPO}#descargas-e-instrucciones`, 'Instrucciones de actualización')}</div>
+      <small>Descargar no instala la actualización. Reemplazá los archivos y recargá la extensión y las páginas abiertas.</small>`;
+  }
+  function wireAbout() {
+    state.shadow?.querySelector('[data-action="check-updates"]')?.addEventListener('click', () => refreshProductInfo(true));
+    state.shadow?.querySelector('[data-action="copy-commit"]')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(state.buildInfo.commit); showStatus('Commit copiado.'); }
+      catch { showStatus('No pude copiar el commit. Podés seleccionarlo desde su enlace.'); }
+    });
+  }
+  function paintProductInfo() {
+    if (!state.shadow || state.minimized) return;
+    const subtitle = state.shadow.querySelector('[data-product-version]');
+    if (subtitle) subtitle.textContent = `Versión ${state.buildInfo?.version || chrome.runtime.getManifest().version}`;
+    const bell = state.shadow.querySelector('[data-action="updates"]');
+    if (bell) {
+      bell.classList.toggle('has-updates', state.updateInfo.status === 'available');
+      bell.title = updateLabel(); bell.setAttribute('aria-label', updateLabel());
+    }
+    const about = state.shadow.querySelector('#jalfia-about');
+    if (about) { about.innerHTML = renderAbout(); wireAbout(); }
+  }
+  async function refreshProductInfo(force = false) {
+    if (state.updatesBusy) return;
+    state.updatesBusy = true;
+    try {
+      const cached = await sendExtensionMessage({ type: 'JALFIA_GET_BUILD_INFO' });
+      if (!cached?.ok) throw new Error(cached?.error || 'No pude consultar la información instalada.');
+      state.buildInfo = cached.installed; state.updateInfo = cached.updates; paintProductInfo();
+      const result = await sendExtensionMessage({ type: 'JALFIA_CHECK_UPDATES', force });
+      if (!result?.ok) throw new Error(result?.error || 'No pude consultar novedades.');
+      state.buildInfo = result.installed; state.updateInfo = result.updates;
+    } catch (error) { state.updateInfo = { ...state.updateInfo, error: error.message }; }
+    finally { state.updatesBusy = false; paintProductInfo(); }
+  }
+
   function renderSettings() {
     const memories = [
       ...(state.memory ? [{ title: 'Página principal', memory: state.memory }] : []),
@@ -2407,6 +2473,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
+      <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
       <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
       <div class="setting setting-heading"><label for="jalfia-dark">Modo oscuro</label><input id="jalfia-dark" type="checkbox" role="switch" data-action="dark-mode" ${state.darkMode ? 'checked' : ''}></div>
       <div class="setting">
@@ -2589,14 +2656,15 @@
             <div class="brand">
               <div class="logo">J</div>
               <div>
-                <h1>JALFIA</h1>
-                <div class="subtitle">Form Assistant</div>
+                <h1>${escapeHtml(chrome.runtime.getManifest().name)}</h1>
+                <div class="subtitle" data-product-version>Versión ${escapeHtml(chrome.runtime.getManifest().version)}</div>
               </div>
             </div>
             <div class="actions">
+              <button class="icon-button update-bell ${state.updateInfo.status === 'available' ? 'has-updates' : ''}" type="button" data-action="updates" title="${updateLabel()}" aria-label="${updateLabel()}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg></button>
               <button class="icon-button settings-tab" type="button" data-action="settings" aria-pressed="${state.settingsMode}" title="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}" aria-label="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}">${settingsNavigationIcon()}</button>
               <button class="icon-button" type="button" data-action="minimize" title="Minimizar" aria-label="Minimizar">${minimizeIcon()}</button>
-              <button class="icon-button" type="button" data-action="close" title="Cerrar">X</button>
+              <button class="icon-button" type="button" data-action="close" title="Cerrar" aria-label="Cerrar">X</button>
             </div>
           </div>
           ${state.settingsMode ? '' : `<div class="meta">
@@ -3023,6 +3091,11 @@
   }
 
   function wirePanelEvents() {
+    wireAbout();
+    state.shadow.querySelector('[data-action="updates"]')?.addEventListener('click', () => {
+      state.stopVoice?.(); state.settingsMode = true; renderPanel();
+      state.shadow.querySelector('#jalfia-about')?.focus();
+    });
     state.shadow.querySelector('[data-action="cancel-dictation"]')?.addEventListener('click', cancelDictation);
     state.shadow.querySelector('[data-action="text-input-mode"]')?.addEventListener('click', () => {
       if (state.listening || state.voiceBusy) return;
@@ -3232,6 +3305,7 @@
     applyExpandedHostSize();
     renderPanel();
     startAutoRescan();
+    refreshProductInfo();
     refreshFrames().then(() => { if (state.panel.style.display !== 'none') renderPanel(); }).catch(error => showStatus(error.message));
   }
 
@@ -3268,6 +3342,7 @@
     renderPanel();
     keepPanelInViewport();
     startAutoRescan();
+    refreshProductInfo();
   }
 
   function togglePanel() {

@@ -1,0 +1,47 @@
+name: Publish development extension
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test
+      - run: node scripts/package.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: dist/*.zip
+          if-no-files-found: error
+  publish:
+    needs: test-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: development-release-${{ github.sha }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: dist
+      - name: Publish or complete prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          tag="dev-$RELEASE_SHA"
+          version=$(node -p "require('./manifest.json').version")
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$RELEASE_SHA" --prerelease --latest=false --generate-notes --title "JALFIA $version · ${RELEASE_SHA:0:7} · desarrollo"
+          fi
+          gh release upload "$tag" dist/*.zip --clobber
