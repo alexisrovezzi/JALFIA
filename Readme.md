@@ -2,6 +2,8 @@
 
 ## Descargas e instrucciones
 
+En el encabezado, hacer clic en la version abre Ajustes > Acerca de JALFIA. La campanita abre un dialogo compacto con el estado de novedades y la descarga del paquete cuando existe una actualizacion; `Ver detalle` abre Acerca de JALFIA. Cerrar el dialogo no descarta el aviso de actualizacion.
+
 El enlace `Paquetes publicados` abre las publicaciones del workflow en GitHub. Cuando JALFIA identifica una publicacion disponible, `Descargar ZIP` descarga directamente su paquete con los metadatos del commit. Usar ese paquete para conservar la identificacion del codigo instalado y la comparacion de actualizaciones. `Instrucciones de actualizacion` abre esta seccion.
 
 Las [publicaciones de desarrollo](https://github.com/alexisrovezzi/JALFIA/releases) incluyen un paquete `JALFIA-<version>-<commit>.zip`. Cada push a `main` ejecuta las pruebas y, si pasan, publica automaticamente una prerelease con el ZIP, el commit y las novedades. Las publicaciones de desarrollo pueden compartir el numero de version: el commit identifica la compilacion. Si todavia no aparece el paquete del commit, su publicacion puede estar en curso o haber fallado; consultá GitHub Actions. Antes de la primera ejecucion exitosa no habra un paquete preparado.

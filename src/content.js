@@ -59,6 +59,7 @@
     buildInfo: null,
     updateInfo: {},
     updatesBusy: false,
+    updatesDialogOpen: false,
     voiceMode: true,
     voiceTranscript: '',
     voiceCorrectedText: '',
@@ -1377,6 +1378,17 @@
       }
 
       .update-bell { position: relative; }
+      .version-link { display: block; padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: left; cursor: pointer; font-family: inherit; }
+      .version-link:hover { text-decoration: underline; }
+      .version-link:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+      .updates-dialog { position: fixed; margin: 0; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--ink); box-shadow: 0 16px 48px #0f172a40; font: 14px/1.5 Inter, system-ui, sans-serif; }
+      .updates-dialog::backdrop { background: #0f172a26; }
+      .updates-dialog h2 { margin: 0; font-size: 17px; }
+      .updates-dialog a { color: var(--ink); }
+      .updates-dialog button, .updates-dialog a { font: inherit; }
+      .updates-dialog :focus-visible { outline: 3px solid #f59e0b; outline-offset: 3px; }
+      .updates-dialog .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .updates-dialog .dialog-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
       .update-bell.has-updates::after { content: ''; position: absolute; top: 3px; right: 3px; width: 9px; height: 9px; border-radius: 50%; background: #ffdc45; border: 2px solid #24355e; }
       .about { display: grid; gap: 10px; overflow-wrap: anywhere; }
       .about-links { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -2413,6 +2425,48 @@
   function updateLabel() {
     return state.updateInfo.status === 'available' ? 'Hay una actualización de desarrollo disponible' : 'Consultar novedades de JALFIA';
   }
+  function renderUpdateNotice() {
+    const info = state.updateInfo;
+    const messages = {
+      available: 'Hay novedades para JALFIA. Podés descargar el paquete para actualizar tu extensión.',
+      identical: 'Estás al día con las publicaciones de JALFIA.',
+      ahead: 'Tu instalación está adelantada respecto del último paquete publicado.',
+      diverged: 'Tu instalación y la publicación tienen historias diferentes. Consultá el detalle antes de actualizar.',
+      unavailable: 'Todavía no hay un paquete publicado disponible.',
+      unknown: 'No podemos comparar tu instalación con la publicación. Consultá el detalle en Acerca de JALFIA.'
+    };
+    const publication = info.publication;
+    return `<p role="status">${escapeHtml(messages[info.status] || (state.updatesBusy ? 'Buscando novedades…' : 'Todavía no se comprobaron las novedades.'))}</p>
+      ${info.error ? `<p role="alert">${escapeHtml(info.error)} El último resultado puede estar desactualizado.</p>` : ''}
+      ${info.status === 'available' && publication ? `<a href="${escapeHtml(publication.download)}" target="_blank" rel="noopener noreferrer">Descargar actualización</a><p><small>Después de descargar, reemplazá los archivos y recargá la extensión y las páginas abiertas.</small></p>` : ''}`;
+  }
+  function openAbout() {
+    state.updatesDialogOpen = false;
+    state.shadow?.querySelector('.updates-dialog')?.close();
+    state.stopVoice?.(); state.settingsMode = true; renderPanel();
+    state.shadow.querySelector('#jalfia-about')?.focus();
+  }
+  function positionUpdateDialog() {
+    const dialog = state.shadow?.querySelector('.updates-dialog');
+    const bell = state.shadow?.querySelector('[data-action="updates"]');
+    if (!dialog?.open || !bell) return;
+    const anchor = bell.getBoundingClientRect();
+    dialog.style.left = `${Math.max(12, Math.min(anchor.right - dialog.offsetWidth, window.innerWidth - dialog.offsetWidth - 12))}px`;
+    dialog.style.top = `${Math.max(12, Math.min(anchor.bottom + 10, window.innerHeight - dialog.offsetHeight - 12))}px`;
+  }
+  function wireUpdateDialog() {
+    const dialog = state.shadow.querySelector('.updates-dialog');
+    const close = () => { state.updatesDialogOpen = false; dialog.close(); state.shadow.querySelector('[data-action="updates"]')?.focus(); };
+    dialog.querySelector('[data-action="close-updates"]').addEventListener('click', close);
+    dialog.querySelector('[data-action="updates-about"]').addEventListener('click', openAbout);
+    dialog.querySelector('[data-action="notice-check"]').addEventListener('click', () => refreshProductInfo(true));
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    dialog.addEventListener('click', event => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) close();
+    });
+    if (state.updatesDialogOpen) { dialog.showModal(); positionUpdateDialog(); }
+  }
   function renderAbout() {
     const installed = state.buildInfo || { name: chrome.runtime.getManifest().name, version: chrome.runtime.getManifest().version };
     const info = state.updateInfo, publication = info.publication;
@@ -2449,6 +2503,11 @@
     }
     const about = state.shadow.querySelector('#jalfia-about');
     if (about) { about.innerHTML = renderAbout(); wireAbout(); }
+    const notice = state.shadow.querySelector('[data-update-notice]');
+    if (notice) notice.innerHTML = renderUpdateNotice();
+    const check = state.shadow.querySelector('[data-action="notice-check"]');
+    if (check) { check.disabled = state.updatesBusy; check.textContent = state.updatesBusy ? 'Buscando…' : 'Buscar novedades'; }
+    positionUpdateDialog();
   }
   async function refreshProductInfo(force = false) {
     if (state.updatesBusy) return;
@@ -2657,11 +2716,11 @@
               <div class="logo">J</div>
               <div>
                 <h1>${escapeHtml(chrome.runtime.getManifest().name)}</h1>
-                <div class="subtitle" data-product-version>Versión ${escapeHtml(chrome.runtime.getManifest().version)}</div>
+                <button class="subtitle version-link" type="button" data-action="about" data-product-version title="Acerca de JALFIA" aria-label="Acerca de JALFIA">Versión ${escapeHtml(chrome.runtime.getManifest().version)}</button>
               </div>
             </div>
             <div class="actions">
-              <button class="icon-button update-bell ${state.updateInfo.status === 'available' ? 'has-updates' : ''}" type="button" data-action="updates" title="${updateLabel()}" aria-label="${updateLabel()}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg></button>
+              <button class="icon-button update-bell ${state.updateInfo.status === 'available' ? 'has-updates' : ''}" type="button" data-action="updates" aria-haspopup="dialog" title="${updateLabel()}" aria-label="${updateLabel()}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg></button>
               <button class="icon-button settings-tab" type="button" data-action="settings" aria-pressed="${state.settingsMode}" title="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}" aria-label="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}">${settingsNavigationIcon()}</button>
               <button class="icon-button" type="button" data-action="minimize" title="Minimizar" aria-label="Minimizar">${minimizeIcon()}</button>
               <button class="icon-button" type="button" data-action="close" title="Cerrar" aria-label="Cerrar">X</button>
@@ -2696,6 +2755,11 @@
               : '<button class="secondary" type="button" data-action="prev-field" title="Campo anterior" aria-label="Campo anterior"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5m7-7-7 7 7 7"></path></svg></button><button class="primary" type="button" data-action="preview-fill" title="Revisar los valores antes de rellenar">Rellenar</button><button class="secondary" type="button" data-action="next-field" title="Campo siguiente" aria-label="Campo siguiente"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-7-7 7 7-7 7"></path></svg></button>'}
           </footer>`}
         </div>
+        <dialog class="updates-dialog" aria-labelledby="jalfia-updates-title">
+          <div class="dialog-heading"><h2 id="jalfia-updates-title">Novedades de JALFIA</h2><button type="button" data-action="close-updates" aria-label="Cerrar novedades" autofocus>×</button></div>
+          <div data-update-notice>${renderUpdateNotice()}</div>
+          <div class="dialog-actions"><button type="button" data-action="notice-check" ${state.updatesBusy ? 'disabled' : ''}>${state.updatesBusy ? 'Buscando…' : 'Buscar novedades'}</button><button type="button" data-action="updates-about">Ver detalle</button></div>
+        </dialog>
       </section>
     `;
 
@@ -3092,9 +3156,11 @@
 
   function wirePanelEvents() {
     wireAbout();
+    wireUpdateDialog();
+    state.shadow.querySelector('[data-action="about"]')?.addEventListener('click', openAbout);
     state.shadow.querySelector('[data-action="updates"]')?.addEventListener('click', () => {
-      state.stopVoice?.(); state.settingsMode = true; renderPanel();
-      state.shadow.querySelector('#jalfia-about')?.focus();
+      state.updatesDialogOpen = true;
+      state.shadow.querySelector('.updates-dialog').showModal(); positionUpdateDialog();
     });
     state.shadow.querySelector('[data-action="cancel-dictation"]')?.addEventListener('click', cancelDictation);
     state.shadow.querySelector('[data-action="text-input-mode"]')?.addEventListener('click', () => {
