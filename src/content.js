@@ -2891,14 +2891,10 @@
           </div>
           ${state.settingsMode ? '' : `<div class="meta">
             <div class="count-group">
-              <div class="count">${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}</div>
-              <button class="secondary" type="button" data-action="refresh" title="Reanalizar sin modificar los campos encontrados" aria-label="Reanalizar sin modificar los campos encontrados">${refreshIcon()}</button>
-              <button class="secondary" type="button" data-action="recalculate" title="Limpia los datos cargados en JALFIA, cancela papeleras marcadas y vuelve a detectar desde cero" aria-label="Limpia los datos cargados en JALFIA, cancela papeleras marcadas y vuelve a detectar desde cero">${recalculateIcon()}</button>
-              <button class="secondary" type="button" data-action="choose-scope" title="Elegir el formulario o sector a analizar" aria-label="Elegir el formulario o sector a analizar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5M9 9h6v6H9Z"></path></svg></button>
               ${!state.voiceMode ? `<button class="secondary" type="button" data-action="voice-mode" title="Completar con voz e IA" aria-label="Completar con voz e IA">${microphoneIcon()}</button>` : ''}
               ${state.scopeRoot ? `<button class="secondary" type="button" data-action="reset-scope" title="Volver a detectar en toda la pagina o dialogo activo" aria-label="Volver al alcance automatico">${removeFieldIcon()}</button>` : ''}
             </div>
-            <button class="icon-button" type="button" data-action="analyze-options" ${state.analyzingOptions ? 'disabled' : ''} title="Analizar en profundidad: obtener opciones de combos y autocompletos" aria-label="Analizar en profundidad: obtener opciones de combos y autocompletos">
+            <button class="icon-button" type="button" data-action="analyze-options" ${state.analyzingOptions ? 'disabled' : ''} title="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos" aria-label="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <circle cx="10" cy="10" r="7"></circle>
                 <path d="m15 15 6 6M7 10h6M10 7v6"></path>
