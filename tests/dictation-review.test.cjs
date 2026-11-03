@@ -15,7 +15,7 @@ function setup() {
   }
   class Recognition { start() {} stop() { this.onend(); } abort() {} }
   const input = new Input('Hola mundo');
-  const state = { shadow: { querySelector: () => null }, reviewBeforeApply: true, voicePreview: false,
+  const state = { shadow: { querySelector: () => null }, reviewBeforeApply: true, autoImproveText: false, voicePreview: false,
     voiceTranscript: 'Juan', voiceActions: [], voiceTarget: { kind: 'text', label: 'Nombre', element: input, original: input.value, start: 5, end: 10 },
     fields: [{ id: 'name', label: 'Nombre', kind: 'text', options: [], rules: {} }], dictationWriteMode: 'cursor',
     draftValues: new Map(), editedFieldIds: new Set(), formClearFieldIds: new Set() };

@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message?.type?.startsWith('JALFIA_')) return false;
-  const supported = ['JALFIA_GET_UI_SETTINGS', 'JALFIA_SAVE_UI_SETTINGS', 'JALFIA_OPEN_AI_SETTINGS', 'JALFIA_AI_GET', 'JALFIA_AI_SAVE', 'JALFIA_AI_MODELS', 'JALFIA_AI_TEST', 'JALFIA_INTERPRET'];
+  const supported = ['JALFIA_GET_UI_SETTINGS', 'JALFIA_SAVE_UI_SETTINGS', 'JALFIA_OPEN_AI_SETTINGS', 'JALFIA_AI_GET', 'JALFIA_AI_SAVE', 'JALFIA_AI_MODELS', 'JALFIA_AI_TEST', 'JALFIA_INTERPRET', 'JALFIA_IMPROVE_TEXT'];
   if (!supported.includes(message.type)) return false;
   (async () => {
     await storageReady;
@@ -36,10 +36,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'JALFIA_GET_UI_SETTINGS') return chrome.storage.local.get('jalfiaSettings');
     if (message.type === 'JALFIA_SAVE_UI_SETTINGS') {
       const prefs = message.settings || {};
-      await chrome.storage.local.set({ jalfiaSettings: { opacity: Math.min(1, Math.max(.55, Number(prefs.opacity) || .96)), darkMode: prefs.darkMode === true, reviewBeforeApply: prefs.reviewBeforeApply === true } });
+      await chrome.storage.local.set({ jalfiaSettings: { opacity: Math.min(1, Math.max(.55, Number(prefs.opacity) || .96)), darkMode: prefs.darkMode === true, reviewBeforeApply: prefs.reviewBeforeApply === true, autoImproveText: prefs.autoImproveText !== false } });
       return { ok: true };
     }
     if (message.type === 'JALFIA_OPEN_AI_SETTINGS') { await chrome.runtime.openOptionsPage(); return { ok: true }; }
+    if (message.type === 'JALFIA_IMPROVE_TEXT') {
+      const config = (await chrome.storage.local.get('jalfiaAI')).jalfiaAI;
+      if (!config) throw new Error('Configurá la IA desde Ajustes para mejorar el texto, o desactivá la mejora automática para dictar sin IA.');
+      return { ok: true, ...(await JalfiaAI.improveText(config, message.text)) };
+    }
     if (message.type === 'JALFIA_INTERPRET') {
       const config = (await chrome.storage.local.get('jalfiaAI')).jalfiaAI;
       if (!config) throw new Error('Configura la IA desde Ajustes antes de interpretar el dictado.');
