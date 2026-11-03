@@ -3529,6 +3529,28 @@
     });
   }
 
+  function protectPanelKeyboard(shadow) {
+    // Keep page shortcuts out of native editors inside the panel's Shadow DOM.
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+      shadow.addEventListener(type, event => event.stopPropagation());
+      window.addEventListener(type, event => {
+        if (![' ', 'Spacebar'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.keyCode === 229) return;
+        const target = event.composedPath?.()[0] || event.target;
+        if (!shadow.contains(target) || !['TEXTAREA', 'INPUT'].includes(target?.tagName)) return;
+        event.stopImmediatePropagation();
+        // An earlier window-capture shortcut may have already cancelled Space.
+        // Restore only this trusted edit; never alter fields on the host page.
+        if (type === 'keyup' || !event.defaultPrevented || !event.isTrusted || shadow.activeElement !== target || !target.isConnected || target.disabled || target.readOnly || typeof target.selectionStart !== 'number') return;
+        const before = target.value;
+        let inserted = false;
+        try { inserted = document.execCommand('insertText', false, ' '); } catch {}
+        if (inserted || target.value !== before) return;
+        target.setRangeText(' ', target.selectionStart, target.selectionEnd, 'end');
+        target.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: ' ' }));
+      }, true);
+    }
+  }
+
   function createPanel() {
     const host = document.createElement('div');
     host.id = PANEL_ID;
@@ -3546,6 +3568,7 @@
     document.documentElement.appendChild(host);
     state.panel = host;
     state.shadow = host.attachShadow({ mode: 'open' });
+    protectPanelKeyboard(state.shadow);
     applyExpandedHostSize();
     renderPanel();
     keepPanelInViewport();
