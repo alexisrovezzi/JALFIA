@@ -7,8 +7,8 @@ const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8'
 function setup({ prefixed = false, unsupported = false, startThrows = false } = {}) {
   const timers = new Map(), listeners = new Set(), messages = [];
   let counter = 0, captures = 0, processed = 0;
-  const statusElement = { textContent: '' }, errorElement = { textContent: '', hidden: true }, noticeElement = { textContent: '', hidden: true };
-  const elements = { '[data-microphone-status]': statusElement, '[data-microphone-error]': errorElement, '[data-microphone-notice]': noticeElement };
+  const statusElement = { textContent: '' }, errorElement = { textContent: '', hidden: true }, noticeElement = { textContent: '', hidden: true }, noticesElement = { hidden: true };
+  const elements = { '[data-microphone-status]': statusElement, '[data-microphone-error]': errorElement, '[data-microphone-notice]': noticeElement, '[data-microphone-notices]': noticesElement };
   class Recognition { start() { if (startThrows) throw new Error('not allowed'); } stop() {} abort() {} }
   const devices = { addEventListener: (name, fn) => { assert.equal(name, 'devicechange'); listeners.add(fn); }, removeEventListener: (_, fn) => listeners.delete(fn),
     enumerateDevices() { captures++; throw new Error('No debe enumerar ni asumir el predeterminado'); }, getUserMedia() { captures++; throw new Error('No debe abrir audio'); } };
@@ -17,7 +17,7 @@ function setup({ prefixed = false, unsupported = false, startThrows = false } = 
   if (!unsupported) window[prefixed ? 'webkitSpeechRecognition' : 'SpeechRecognition'] = Recognition;
   const context = { state, window, updateVoiceButtons() {}, renderPanel() {}, showStatus: text => messages.push(text), processVoice: () => { processed++; }, normalizeText: text => text.trim(), focusPanelField() {}, escapeHtml: text => String(text || '').replaceAll('<', '&lt;') };
   vm.createContext(context); vm.runInContext(source.slice(source.indexOf('  function startVoiceRecognition('), source.indexOf('  function fieldTypeLabel(')), context);
-  return { context, state, messages, timers, listeners, statusElement, errorElement, noticeElement, captures: () => captures, processed: () => processed };
+  return { context, state, messages, timers, listeners, statusElement, errorElement, noticeElement, noticesElement, captures: () => captures, processed: () => processed };
 }
 for (const prefixed of [true, false]) test(`inicia sin afirmar escucha antes de onstart (${prefixed ? 'webkit' : 'estándar'})`, () => {
   const s = setup({ prefixed }); s.context.startVoiceRecognition();
@@ -63,10 +63,19 @@ test('detener conserva los resultados finales pero no reactiva el indicador de e
 });
 test('cambio de dispositivos avisa sin perder texto, confirmar nombres ni reiniciar solo', () => {
   const s = setup(); s.context.startVoiceRecognition(); s.state.voiceTranscript = 'Pendiente';
-  assert.equal(s.listeners.size, 1); [...s.listeners][0](); assert.match(s.state.microphoneNotice, /Cambió la lista/); assert.equal(s.noticeElement.hidden, false);
+  assert.equal(s.listeners.size, 1); [...s.listeners][0](); assert.match(s.state.microphoneNotice, /Cambió la lista/); assert.equal(s.noticeElement.hidden, false); assert.equal(s.noticesElement.hidden, false);
   assert.equal(s.state.voiceTranscript, 'Pendiente'); assert.equal(s.processed(), 0); assert.equal(s.captures(), 0);
   s.state.stopVoice(true); assert.equal(s.listeners.size, 0);
-  s.context.startVoiceRecognition(); assert.equal(s.listeners.size, 1); assert.equal(s.state.microphoneNotice, '');
+  s.context.startVoiceRecognition(); assert.equal(s.listeners.size, 1); assert.equal(s.state.microphoneNotice, ''); assert.equal(s.noticesElement.hidden, true);
+});
+test('escucha normal no duplica el mensaje central y los errores siguen visibles', () => {
+  const status = { hidden: false, querySelector: () => ({ textContent: '' }) };
+  const state = { voiceMode: true, listening: true, shadow: { querySelector: () => status } };
+  const context = { state, schedulePanelSize() {} };
+  vm.createContext(context); vm.runInContext(source.slice(source.indexOf('  function showStatus('), source.indexOf('  function updateDraftValues(')), context);
+  context.showStatus('Escuchando... Pulsa detener para terminar.'); assert.equal(status.hidden, true);
+  context.showStatus('No pude capturar audio.'); assert.equal(status.hidden, false);
+  state.listening = false; context.showStatus('Dictado insertado.'); assert.equal(status.hidden, false);
 });
 test('error al iniciar, API ausente y agotamiento de reintentos quedan detenidos', () => {
   for (const options of [{ unsupported: true }, { startThrows: true }]) {

@@ -1157,6 +1157,8 @@
     if (warning) { warning.textContent = state.microphoneError || ''; warning.hidden = !state.microphoneError; }
     const notice = state.shadow?.querySelector('[data-microphone-notice]');
     if (notice) { notice.textContent = state.microphoneNotice || ''; notice.hidden = !state.microphoneNotice; }
+    const notices = state.shadow?.querySelector('[data-microphone-notices]');
+    if (notices) notices.hidden = !state.microphoneError && !state.microphoneNotice;
     const label = state.shadow?.querySelector('[data-voice-label]');
     if (label && state.listening) label.textContent = status === 'Escuchando' ? 'Escuchando… Tocá para terminar' : status;
     if (typeof schedulePanelSize === 'function') schedulePanelSize();
@@ -1408,6 +1410,7 @@
       .microphone-info small { color:var(--muted); }
       .microphone-info p { margin:4px 0; }
       .microphone-info p[hidden] { display:none; }
+      .microphone-info[hidden] { display:none; }
       .microphone-info summary { cursor:pointer; }
       .microphone-info summary:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
       .voice-scroll.voice-idle { justify-content:safe center; min-height:180px; }
@@ -2640,6 +2643,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
+      <div class="setting"><h2>Micrófono y permisos</h2>${renderMicrophoneInfo()}</div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-auto-improve">Mejorar texto automáticamente</label><input id="jalfia-auto-improve" type="checkbox" role="switch" data-action="auto-improve-text" ${state.autoImproveText !== false ? 'checked' : ''} aria-describedby="jalfia-improve-hint"></div><small id="jalfia-improve-hint">Activada por defecto para dictados de voz a un campo de texto. Envía la transcripción al proveedor y modelo de IA configurados y puede consumir uso de API. Con revisión desactivada, inserta la mejora al detener. Si falla o detecta ambigüedades, conserva el texto para revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
@@ -2708,10 +2712,7 @@
         <textarea id="jalfia-typed-dictation" data-typed-dictation rows="4" maxlength="20000" placeholder="Escribí o pegá el texto que querés usar…" ${state.voiceBusy ? 'disabled' : ''}>${escapeHtml(state.typedDictation)}</textarea>
         <button class="primary" type="button" data-action="interpret-typed" ${state.voiceBusy ? 'disabled' : ''}>${state.voiceTarget ? 'Interpretar texto' : 'Elegir destino y continuar'}</button>
         ${state.voiceTarget ? '<button class="secondary" type="button" data-action="choose-text-destination">Cambiar destino</button>' : ''}
-      </div>` : `<button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>`}
-      ${state.voiceTarget ? `<small>${state.voiceTarget.kind === 'text' ? `Dictado en: ${escapeHtml(state.voiceTarget.label)}` : 'Completar el formulario seleccionado'}</small>` : ''}
-      ${!state.textInputMode && state.voiceTarget?.kind !== 'form' ? `<small data-improve-behavior>${(state.listening ? state.activeVoiceImprove : state.autoImproveText) !== false ? 'Mejora automática activada: el dictado se enviará al proveedor de IA configurado.' : 'Mejora automática desactivada: se usará el texto reconocido.'}</small>` : ''}
-      ${!state.textInputMode ? `<small data-review-behavior>${state.voiceTarget?.kind === 'form' || state.dictationWriteMode === 'replace' || (state.listening ? state.activeVoiceReview === true : state.reviewBeforeApply === true) ? 'Se revisará antes de aplicar' : 'Se insertará al detener'}</small>` : ''}
+      </div>` : `<button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label role="status" aria-live="polite" aria-atomic="true">${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>`}
       ${state.voiceTarget?.kind === 'text' && state.voiceActions.length ? `<div class="setting"><label for="jalfia-write-mode">Cómo escribir el dictado</label><select id="jalfia-write-mode" data-action="dictation-write-mode" ${state.voiceBusy ? 'disabled' : ''}>
         <option value="cursor" ${state.dictationWriteMode === 'cursor' ? 'selected' : ''}>Insertar en el cursor</option>
         <option value="append" ${state.dictationWriteMode === 'append' ? 'selected' : ''}>Agregar al final</option>
@@ -2893,9 +2894,9 @@
           </div>`}
         </header>
         <div class="body">
-          ${!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening) ? renderMicrophoneInfo() : ''}
+          ${!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening) ? `<section class="microphone-info" data-microphone-notices aria-label="Avisos del micrófono" ${state.microphoneError || state.microphoneNotice ? '' : 'hidden'}><p data-microphone-error role="alert" ${state.microphoneError ? '' : 'hidden'}>${escapeHtml(state.microphoneError)}</p><p data-microphone-notice role="status" ${state.microphoneNotice ? '' : 'hidden'}>${escapeHtml(state.microphoneNotice)}</p></section>` : ''}
           ${state.settingsMode ? renderSettings() : state.voiceMode ? renderVoice() : state.previewMode ? renderPreview() : renderCarousel()}
-          <div class="status" data-status role="status" ${state.statusMessage ? '' : 'hidden'}>
+          <div class="status" data-status role="status" ${!state.statusMessage || (state.voiceMode && !state.settingsMode && !state.textInputMode && state.listening && /^(Escuchando|Iniciando micrófono\.)/.test(state.statusMessage)) ? 'hidden' : ''}>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7h.01"></path></svg>
             <span data-status-text>${escapeHtml(state.statusMessage)}</span>
           </div>
@@ -2942,7 +2943,7 @@
     state.statusMessage = message || '';
     const status = state.shadow?.querySelector('[data-status]');
     if (status) {
-      status.hidden = !state.statusMessage;
+      status.hidden = !state.statusMessage || (state.voiceMode && !state.settingsMode && !state.textInputMode && state.listening && /^(Escuchando|Iniciando micrófono\.)/.test(state.statusMessage));
       status.querySelector('[data-status-text]').textContent = state.statusMessage;
     }
     schedulePanelSize();
