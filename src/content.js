@@ -39,6 +39,9 @@
     recognition: null,
     stopVoice: null,
     listening: false,
+    microphoneStatus: 'Dictado detenido',
+    microphoneError: '',
+    microphoneNotice: '',
     activeVoiceFieldId: '',
     pendingFocusFieldId: '',
     draftValues: new Map(),
@@ -962,11 +965,16 @@
     if (state.analyzingOptions) { showStatus('Espera a que termine el analisis de opciones.'); return; }
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) {
-      showStatus('Este navegador no expone reconocimiento de voz para la extension.');
+      const message = 'Este navegador no expone reconocimiento de voz para la extensión. Usá el modo escritura o probá un navegador compatible.';
+      updateMicrophoneStatus('Dictado detenido', message); showStatus(message);
       return;
     }
 
-    const recognition = new Recognition();
+    let recognition;
+    try { recognition = new Recognition(); }
+    catch { const message = 'No pude preparar el reconocimiento de voz. Revisá los permisos de micrófono del sitio y del navegador.'; updateMicrophoneStatus('Dictado detenido', message); showStatus(message); return; }
+    state.microphoneError = ''; state.microphoneNotice = '';
+    updateMicrophoneStatus('Iniciando micrófono');
     const reviewBeforeApply = state.reviewBeforeApply === true;
     const autoImproveText = state.autoImproveText !== false;
     if (!fieldId) { state.voiceStopHandled = false; state.activeVoiceReview = reviewBeforeApply; }
@@ -988,6 +996,15 @@
     let networkRetries = 0;
     let networkRetryDelay = 0;
     let recoveryTimer = null;
+    let started = false;
+    const devices = window.navigator?.mediaDevices;
+    const deviceChange = () => {
+      if (finished) return;
+      state.microphoneNotice = 'Cambió la lista de dispositivos. Si cambiaste o desconectaste el micrófono, detené y reiniciá el dictado después de revisar la entrada del navegador. El texto reconocido se conserva.';
+      updateMicrophoneStatus(state.microphoneStatus);
+    };
+    // Listening for changes neither opens a stream nor asks for device access.
+    try { devices?.addEventListener?.('devicechange', deviceChange); } catch {}
 
     const finish = () => {
       if (finished) return;
@@ -995,8 +1012,10 @@
       window.clearTimeout(restartTimer);
       window.clearTimeout(stopTimer);
       window.clearTimeout(recoveryTimer);
-      recognition.onresult = null; recognition.onend = null; recognition.onerror = null;
+      recognition.onresult = null; recognition.onend = null; recognition.onerror = null; recognition.onstart = null; recognition.onaudioend = null;
+      try { devices?.removeEventListener?.('devicechange', deviceChange); } catch {}
       state.listening = false;
+      updateMicrophoneStatus('Dictado detenido');
       state.activeVoiceFieldId = '';
       state.recognition = null;
       state.stopVoice = null;
@@ -1007,7 +1026,7 @@
         const submit = state.voiceSubmit;
         state.voiceSubmit = false;
         if (submit && !failed) processVoice({ fromVoiceStop: true, reviewBeforeApply, autoImproveText });
-      }
+      } else { renderPanel(); }
       if (state.pendingFocusFieldId) {
         const fieldToFocus = state.pendingFocusFieldId;
         state.pendingFocusFieldId = '';
@@ -1019,18 +1038,21 @@
       restartTimer = null;
       if (!keepListening) return;
       resultCount = 0;
+      updateMicrophoneStatus(started || networkRetries ? 'Reconectando' : 'Iniciando micrófono');
       try {
         recognition.start();
       } catch (error) {
         keepListening = false;
         failed = true;
-        showStatus(`No pude iniciar el microfono: ${error.message || error}.`);
+        const message = 'No pude iniciar el micrófono. Revisá los permisos del sitio, la entrada seleccionada en el navegador y si otro programa está bloqueando el dispositivo.';
+        updateMicrophoneStatus('Dictado detenido', message); showStatus(message);
         finish();
       }
     };
 
     state.stopVoice = (discard = false) => {
       keepListening = false;
+      updateMicrophoneStatus('Deteniendo dictado');
       if (discard) { try { recognition.abort(); } catch {} finish(); return; }
       if (restartTimer !== null) {
         finish();
@@ -1051,8 +1073,17 @@
       state.voiceActionIndex = 0; state.voicePreview = false;
       state.dictationWriteMode = 'cursor'; state.dictationReplaceConfirmed = false;
       renderPanel();
-    }
-    showStatus('Escuchando... Pulsa detener para terminar.');
+    } else { renderPanel(); updateVoiceButtons(); }
+    showStatus('Iniciando micrófono. Esperá la confirmación de escucha antes de hablar.');
+
+    recognition.onstart = () => {
+      if (finished || !keepListening) return;
+      started = true;
+      updateMicrophoneStatus('Escuchando'); showStatus('Escuchando... Pulsa detener para terminar.');
+    };
+    recognition.onaudioend = () => {
+      if (!finished && keepListening) updateMicrophoneStatus('Reconectando');
+    };
 
     recognition.onresult = (event) => {
       if (finished) return;
@@ -1067,13 +1098,14 @@
         const output = state.shadow.querySelector('[data-transcript]');
         if (output) output.textContent = transcript;
       }
-      if (keepListening) showStatus('Escuchando... Pulsa detener para terminar.');
+      if (keepListening) { started = true; updateMicrophoneStatus('Escuchando'); showStatus('Escuchando... Pulsa detener para terminar.'); }
     };
 
     recognition.onerror = (event) => {
       if (finished || !keepListening) return;
       if (event.error === 'no-speech') return;
       if (event.error === 'network' && networkRetries < 3) {
+        updateMicrophoneStatus('Reconectando');
         networkRetries++;
         networkRetryDelay = networkRetries * 1000;
         showStatus(`Se interrumpió la conexión de voz. Reintentando ${networkRetries} de 3; el texto reconocido se conserva.`);
@@ -1081,20 +1113,30 @@
         recoveryTimer = window.setTimeout(() => {
           if (finished || !keepListening) return;
           failed = true;
-          showStatus('No pude recuperar la conexión de voz. El texto reconocido se conserva para revisarlo.');
+          const message = 'No pude recuperar la conexión de voz. Revisá la conexión y el servicio de reconocimiento del navegador. El texto reconocido se conserva para revisarlo.';
+          updateMicrophoneStatus('Dictado detenido', message); showStatus(message);
           state.stopVoice?.(true);
         }, 2500);
         return;
       }
       keepListening = false;
       failed = true;
-      showStatus(event.error === 'network' ? 'La conexión de voz falló después de 3 reintentos. El texto reconocido se conserva para revisarlo.' : `No pude usar el microfono: ${event.error || 'error desconocido'}.`);
+      const explanation = {
+        'not-allowed': 'El acceso al micrófono está bloqueado. Revisá el permiso de Micrófono del sitio en la barra de direcciones, los ajustes del navegador y los permisos de privacidad del sistema.',
+        'service-not-allowed': 'El navegador bloqueó el servicio de reconocimiento. Revisá sus permisos y políticas; también podés usar el modo escritura.',
+        'audio-capture': 'No pude capturar audio. Revisá que el micrófono esté conectado, habilitado y seleccionado como entrada en el navegador y el sistema.',
+        network: 'La conexión de voz falló después de 3 reintentos. Revisá la conexión y el servicio de reconocimiento del navegador.'
+      };
+      const message = `${explanation[event.error] || 'El reconocimiento de voz se interrumpió. Revisá los permisos y la entrada de micrófono del navegador.'} El texto reconocido se conserva para revisarlo.`;
+      updateMicrophoneStatus('Dictado detenido', message); showStatus(message);
       state.stopVoice?.();
+      updateMicrophoneStatus('Dictado detenido');
     };
 
     recognition.onend = () => {
       window.clearTimeout(recoveryTimer); recoveryTimer = null;
       if (keepListening) {
+        updateMicrophoneStatus('Reconectando');
         const delay = networkRetryDelay || 250;
         networkRetryDelay = 0;
         restartTimer = window.setTimeout(start, delay);
@@ -1104,6 +1146,31 @@
     };
 
     start();
+  }
+
+  function updateMicrophoneStatus(status, error) {
+    state.microphoneStatus = status;
+    if (error !== undefined) state.microphoneError = error;
+    const phase = state.shadow?.querySelector('[data-microphone-status]');
+    if (phase) phase.textContent = status;
+    const warning = state.shadow?.querySelector('[data-microphone-error]');
+    if (warning) { warning.textContent = state.microphoneError || ''; warning.hidden = !state.microphoneError; }
+    const notice = state.shadow?.querySelector('[data-microphone-notice]');
+    if (notice) { notice.textContent = state.microphoneNotice || ''; notice.hidden = !state.microphoneNotice; }
+    const label = state.shadow?.querySelector('[data-voice-label]');
+    if (label && state.listening) label.textContent = status === 'Escuchando' ? 'Escuchando… Tocá para terminar' : status;
+    if (typeof schedulePanelSize === 'function') schedulePanelSize();
+  }
+
+  function renderMicrophoneInfo() {
+    return `<section class="microphone-info" aria-label="Entrada de audio del dictado">
+      <strong data-microphone-status role="status" aria-live="polite" aria-atomic="true">${escapeHtml(state.microphoneStatus || 'Dictado detenido')}</strong>
+      <small>Entrada de audio: configurada por el navegador</small>
+      <small>El dispositivo exacto no pudo verificarse.</small>
+      <p data-microphone-error role="alert" ${state.microphoneError ? '' : 'hidden'}>${escapeHtml(state.microphoneError)}</p>
+      <p data-microphone-notice role="status" ${state.microphoneNotice ? '' : 'hidden'}>${escapeHtml(state.microphoneNotice)}</p>
+      <details><summary>Revisar micrófono y permisos</summary><small>En Chrome o Edge, abrí los permisos del sitio junto a la dirección y revisá Micrófono. Comprobá también la entrada de audio en los ajustes del navegador y del sistema. La lista de dispositivos conectados no confirma cuál utiliza el reconocimiento.</small></details>
+    </section>`;
   }
 
   function fieldTypeLabel(field) {
@@ -1337,6 +1404,12 @@
       .dictation-review .voice-scroll > .field { order:-2; }
       .dictation-comparison { width:100%; text-align:left; }
       .dictation-comparison p { white-space:pre-wrap; text-align:left; margin:8px 0; }
+      .microphone-info { display:grid; gap:4px; flex-shrink:0; padding:10px 16px; max-height:40%; overflow:auto; color:var(--ink); border-bottom:1px solid var(--line); font-size:12px; }
+      .microphone-info small { color:var(--muted); }
+      .microphone-info p { margin:4px 0; }
+      .microphone-info p[hidden] { display:none; }
+      .microphone-info summary { cursor:pointer; }
+      .microphone-info summary:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
       .voice-scroll.voice-idle { justify-content:safe center; min-height:180px; }
       .voice-toolbar { display:flex; justify-content:center; gap:10px; padding:12px 16px; flex-shrink:0; border-top:1px solid var(--line); }
       .voice-toolbar button { width:42px; height:42px; padding:0; display:grid; place-items:center; color:var(--ink); background:var(--panel); border:1px solid var(--line); }
@@ -2614,7 +2687,7 @@
     button.title = state.listening ? 'Detener y procesar dictado' : state.voiceTranscript ? 'Elegir destino para un nuevo dictado reemplazando el anterior' : 'Elegir dónde dictar o completar';
     button.classList.toggle('recording', state.listening);
     const label = state.shadow.querySelector('[data-voice-label]');
-    if (label) label.textContent = state.voiceBusy ? 'Interpretando…' : state.listening ? 'Escuchando… Tocá para terminar' : 'Tocá para hablar';
+    if (label) label.textContent = state.voiceBusy ? 'Procesando…' : state.listening ? state.microphoneStatus === 'Escuchando' ? 'Escuchando… Tocá para terminar' : state.microphoneStatus || 'Iniciando micrófono' : 'Tocá para hablar';
   }
 
   function renderVoice() {
@@ -2820,6 +2893,7 @@
           </div>`}
         </header>
         <div class="body">
+          ${!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening) ? renderMicrophoneInfo() : ''}
           ${state.settingsMode ? renderSettings() : state.voiceMode ? renderVoice() : state.previewMode ? renderPreview() : renderCarousel()}
           <div class="status" data-status role="status" ${state.statusMessage ? '' : 'hidden'}>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7h.01"></path></svg>
@@ -3145,7 +3219,9 @@
       ? scroll.scrollHeight + (content.querySelector('.voice-toolbar')?.getBoundingClientRect().height || 0)
       : content.getBoundingClientRect().height;
     content.style.flex = previousFlex;
-    const fixedHeight = ['.header', '.status', '.footer'].reduce((total, selector) =>
+    const fixedSections = ['.header', '.status', '.footer'];
+    if (!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening)) fixedSections.push('.microphone-info');
+    const fixedHeight = fixedSections.reduce((total, selector) =>
       total + (state.shadow.querySelector(selector)?.getBoundingClientRect().height || 0), 2);
     const minimum = panelMinimumHeight();
     const available = Math.max(240, window.innerHeight - 32);
