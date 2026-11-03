@@ -221,6 +221,10 @@ test('el modo voz agrupa acciones en una barra y oculta el texto hasta solicitar
   for (const action of ['interpret-voice', 'manual-mode', 'global-voice']) assert.ok(html.includes(`data-action="${action}"`));
   assert.ok(!html.includes('data-action="show-recognized"'));
   assert.ok(!html.includes('data-action="new-voice"'));
+  s.state.manualCompletionEnabled = false; html = s.context.renderVoice();
+  assert.ok(!html.includes('data-action="manual-mode"'));
+  s.state.manualCompletionEnabled = true; html = s.context.renderVoice();
+  assert.ok(html.includes('data-action="manual-mode"'));
   s.state.voiceShowText = true; html = s.context.renderVoice();
   assert.match(html, /texto original/); assert.match(html, /Texto corregido\./);
 });
