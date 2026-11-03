@@ -1439,7 +1439,7 @@
       .header {
         flex-shrink: 0;
         cursor: grab;
-        padding: 16px;
+        padding: 12px 16px;
         color: #fff;
         background: linear-gradient(135deg, var(--blue), var(--cyan) 52%, var(--violet));
         user-select: none;
@@ -1451,20 +1451,24 @@
 
       .header-top {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
         min-width: 0;
       }
 
       .brand {
+        flex: 1 1 auto;
         display: flex;
         align-items: center;
         min-width: 0;
         gap: 12px;
       }
 
+      .brand > div { min-width: 0; }
+      .header .actions { gap: 4px; }
+      .header .icon-button { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; }
       .update-bell { position: relative; }
       .version-link { display: block; padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: left; cursor: pointer; font-family: inherit; }
       .version-link:hover { text-decoration: underline; }
@@ -2876,31 +2880,27 @@
         <header class="header" data-drag-handle>
           <div class="header-top">
             <div class="brand">
-              <div class="logo">J</div>
               <div>
                 <h1>${escapeHtml(chrome.runtime.getManifest().name)}</h1>
                 <button class="subtitle version-link" type="button" data-action="about" data-product-version title="Acerca de JALFIA" aria-label="Acerca de JALFIA">Versión ${escapeHtml(chrome.runtime.getManifest().version)}</button>
               </div>
             </div>
             <div class="actions">
-              <button class="icon-button update-bell ${state.updateInfo.status === 'available' ? 'has-updates' : ''}" type="button" data-action="updates" aria-haspopup="dialog" title="${updateLabel()}" aria-label="${updateLabel()}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg></button>
+              ${state.settingsMode ? '' : `
+                ${!state.voiceMode ? `<button class="icon-button" type="button" data-action="voice-mode" title="Completar con voz e IA" aria-label="Completar con voz e IA">${microphoneIcon()}</button>` : ''}
+                ${state.scopeRoot ? `<button class="icon-button" type="button" data-action="reset-scope" title="Volver a detectar en toda la pagina o dialogo activo" aria-label="Volver al alcance automatico">${removeFieldIcon()}</button>` : ''}
+                <button class="icon-button" type="button" data-action="analyze-options" ${state.analyzingOptions ? 'disabled' : ''} title="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos" aria-label="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <circle cx="10" cy="10" r="7"></circle>
+                    <path d="m15 15 6 6M7 10h6M10 7v6"></path>
+                  </svg>
+                </button>
+              `}
               <button class="icon-button settings-tab" type="button" data-action="settings" aria-pressed="${state.settingsMode}" title="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}" aria-label="${state.settingsMode ? 'Volver al formulario' : 'Abrir ajustes'}">${settingsNavigationIcon()}</button>
               <button class="icon-button" type="button" data-action="minimize" title="Minimizar" aria-label="Minimizar">${minimizeIcon()}</button>
               <button class="icon-button" type="button" data-action="close" title="Cerrar" aria-label="Cerrar">X</button>
             </div>
           </div>
-          ${state.settingsMode ? '' : `<div class="meta">
-            <div class="count-group">
-              ${!state.voiceMode ? `<button class="secondary" type="button" data-action="voice-mode" title="Completar con voz e IA" aria-label="Completar con voz e IA">${microphoneIcon()}</button>` : ''}
-              ${state.scopeRoot ? `<button class="secondary" type="button" data-action="reset-scope" title="Volver a detectar en toda la pagina o dialogo activo" aria-label="Volver al alcance automatico">${removeFieldIcon()}</button>` : ''}
-            </div>
-            <button class="icon-button" type="button" data-action="analyze-options" ${state.analyzingOptions ? 'disabled' : ''} title="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos" aria-label="${state.fields.length} campo${state.fields.length === 1 ? '' : 's'} detectado${state.fields.length === 1 ? '' : 's'}. Analizar en profundidad: obtener opciones de combos y autocompletos">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="10" cy="10" r="7"></circle>
-                <path d="m15 15 6 6M7 10h6M10 7v6"></path>
-              </svg>
-            </button>
-          </div>`}
         </header>
         <div class="body">
           ${!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening) ? `<section class="microphone-info" data-microphone-notices aria-label="Avisos del micrófono" ${state.microphoneError || state.microphoneNotice ? '' : 'hidden'}><p data-microphone-error role="alert" ${state.microphoneError ? '' : 'hidden'}>${escapeHtml(state.microphoneError)}</p><p data-microphone-notice role="status" ${state.microphoneNotice ? '' : 'hidden'}>${escapeHtml(state.microphoneNotice)}</p></section>` : ''}
