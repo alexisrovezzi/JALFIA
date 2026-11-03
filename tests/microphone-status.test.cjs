@@ -25,9 +25,9 @@ for (const prefixed of [true, false]) test(`inicia sin afirmar escucha antes de 
   assert.doesNotMatch(s.messages.at(-1), /^Escuchando/);
   s.state.recognition.onstart(); assert.equal(s.state.microphoneStatus, 'Escuchando'); assert.equal(s.captures(), 0);
 });
-test('no hay nombre inventado ni permisos adicionales aunque existan APIs de dispositivos', () => {
-  const s = setup(); s.context.startVoiceRecognition(); const html = s.context.renderMicrophoneInfo();
-  assert.match(html, /Entrada de audio: configurada por el navegador/); assert.match(html, /El dispositivo exacto no pudo verificarse/); assert.match(html, /aria-live="polite"/); assert.equal(s.captures(), 0);
+test('informa estado sin enumerar dispositivos ni pedir permisos adicionales', () => {
+  const s = setup(); s.context.startVoiceRecognition(); s.state.recognition.onstart();
+  assert.equal(s.state.microphoneStatus, 'Escuchando'); assert.equal(s.captures(), 0);
 });
 test('reconexión conserva el texto y solo vuelve a escuchar tras confirmación', () => {
   const s = setup(); s.context.startVoiceRecognition(); const recognition = s.state.recognition;

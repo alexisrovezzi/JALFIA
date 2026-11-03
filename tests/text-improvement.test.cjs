@@ -60,6 +60,25 @@ test('mejora automática inserta la propuesta al detener cuando revisión está 
   assert.equal(s.calls.length, 1); assert.equal(s.calls[0].type, 'JALFIA_IMPROVE_TEXT'); assert.equal(s.state.voiceActions[0].value, 'Hola, Víctor.'); assert.equal(s.state.voiceTranscript, 'hola Víctor'); assert.equal(s.writes(), 1);
   await s.context.processVoice({ fromVoiceStop: true, autoImproveText: true }); assert.equal(s.calls.length, 1); assert.equal(s.writes(), 1);
 });
+test('el flujo automático muestra solo loader durante mejora e inserción, sin vista previa transitoria', async () => {
+  const s = flowSetup(); let releaseAI, releaseInsert, enteredInsert;
+  const insertStarted = new Promise(resolve => { enteredInsert = resolve; });
+  s.context.sendExtensionMessage = () => new Promise(resolve => { releaseAI = resolve; });
+  s.context.applyVoiceActions = async () => { enteredInsert(); await new Promise(resolve => { releaseInsert = resolve; }); s.state.voiceActions = []; s.state.voicePreview = false; };
+  s.context.escapeHtml = value => value;
+  vm.runInContext(source.slice(source.indexOf('  function renderVoice('), source.indexOf('  async function improveDictationText(')), s.context);
+  const snapshots = [];
+  s.context.renderPanel = () => { if (s.state.voiceAutoProcessing) snapshots.push(s.context.renderVoice()); };
+  const pending = s.context.processVoice({ fromVoiceStop: true, autoImproveText: true });
+  assert.equal(s.state.voiceAutoProcessing, true);
+  assert.match(s.context.renderVoice(), /dictation-loader/);
+  releaseAI({ ok: true, corrected_text: 'Hola, Víctor.', uncertain_fragments: [] });
+  await insertStarted;
+  assert.equal(s.state.voiceAutoProcessing, true);
+  for (const html of snapshots) { assert.match(html, /aria-busy="true"/); assert.doesNotMatch(html, /textarea|Confirmar y aplicar|Vista previa|Comparar original/); }
+  releaseInsert(); await pending;
+  assert.equal(s.state.voiceAutoProcessing, false); assert.equal(s.state.voicePreview, false);
+});
 test('revisión activada muestra la mejora sin insertar y mejora desactivada no consulta IA', async () => {
   const s = flowSetup(); await s.context.processVoice({ fromVoiceStop: true, autoImproveText: true, reviewBeforeApply: true }); assert.equal(s.writes(), 0); assert.equal(s.state.voicePreview, true); assert.equal(s.state.voiceTextSource, 'improved');
   const raw = flowSetup(); await raw.context.processVoice({ fromVoiceStop: true, autoImproveText: false }); assert.equal(raw.calls.length, 0); assert.equal(raw.state.voiceActions[0].value, 'hola Víctor'); assert.equal(raw.writes(), 1);

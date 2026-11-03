@@ -71,6 +71,8 @@
     voiceActionIndex: 0,
     voicePreview: false,
     voiceBusy: false,
+    voiceAutoProcessing: false,
+    voiceAutoPhase: '',
     voiceSubmit: false,
     voiceTarget: null,
     textInputMode: false,
@@ -1164,17 +1166,6 @@
     if (typeof schedulePanelSize === 'function') schedulePanelSize();
   }
 
-  function renderMicrophoneInfo() {
-    return `<section class="microphone-info" aria-label="Entrada de audio del dictado">
-      <strong data-microphone-status role="status" aria-live="polite" aria-atomic="true">${escapeHtml(state.microphoneStatus || 'Dictado detenido')}</strong>
-      <small>Entrada de audio: configurada por el navegador</small>
-      <small>El dispositivo exacto no pudo verificarse.</small>
-      <p data-microphone-error role="alert" ${state.microphoneError ? '' : 'hidden'}>${escapeHtml(state.microphoneError)}</p>
-      <p data-microphone-notice role="status" ${state.microphoneNotice ? '' : 'hidden'}>${escapeHtml(state.microphoneNotice)}</p>
-      <details><summary>Revisar micrófono y permisos</summary><small>En Chrome o Edge, abrí los permisos del sitio junto a la dirección y revisá Micrófono. Comprobá también la entrada de audio en los ajustes del navegador y del sistema. La lista de dispositivos conectados no confirma cuál utiliza el reconocimiento.</small></details>
-    </section>`;
-  }
-
   function fieldTypeLabel(field) {
     const labels = {
       checkbox: 'Casilla',
@@ -1401,6 +1392,9 @@
       .voice-view { display:flex; flex-direction:column; flex:1; min-height:0; color:var(--ink); }
       .voice-scroll { display:flex; flex-direction:column; align-items:center; gap:16px; flex:1; min-height:0; overflow:auto; padding:20px; }
       .voice-scroll > * { flex-shrink:0; }
+      .dictation-loader { width:48px; height:48px; border:4px solid var(--line); border-top-color:var(--blue); border-radius:50%; animation:dictation-spin 0.8s linear infinite; }
+      @keyframes dictation-spin { to { transform:rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .dictation-loader { animation:none; } }
       .dictation-review .global-mic, .dictation-review [data-voice-label] { display:none; }
       .dictation-review .voice-scroll > h2 { order:-3; }
       .dictation-review .voice-scroll > .field { order:-2; }
@@ -2643,7 +2637,6 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
-      <div class="setting"><h2>Micrófono y permisos</h2>${renderMicrophoneInfo()}</div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-auto-improve">Mejorar texto automáticamente</label><input id="jalfia-auto-improve" type="checkbox" role="switch" data-action="auto-improve-text" ${state.autoImproveText !== false ? 'checked' : ''} aria-describedby="jalfia-improve-hint"></div><small id="jalfia-improve-hint">Activada por defecto para dictados de voz a un campo de texto. Envía la transcripción al proveedor y modelo de IA configurados y puede consumir uso de API. Con revisión desactivada, inserta la mejora al detener. Si falla o detecta ambigüedades, conserva el texto para revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
@@ -2695,6 +2688,7 @@
   }
 
   function renderVoice() {
+    if (state.voiceAutoProcessing) return `<section class="voice-view" aria-busy="true"><div class="voice-scroll voice-idle"><span class="dictation-loader" aria-hidden="true"></span><strong role="status" aria-live="polite">${escapeHtml(state.voiceAutoPhase || 'Procesando dictado…')}</strong></div></section>`;
     state.voiceActionIndex = Math.min(state.voiceActionIndex, Math.max(0, state.voiceActions.length - 1));
     const actions = state.voiceActions.filter((action, index) => state.voicePreview ? action.include : index === state.voiceActionIndex).map((action) => {
       const index = state.voiceActions.indexOf(action);
@@ -2762,18 +2756,23 @@
     if (fromVoiceStop && state.voiceStopHandled) return;
     if (fromVoiceStop) state.voiceStopHandled = true;
     if (state.voiceTarget?.kind === 'text') {
-      state.voiceTextSource = 'original'; state.voiceCorrectedText = ''; state.voiceUncertainFragments = []; state.voiceImproveError = '';
-      state.voiceActions = [{ field_id: 'dictation-target', label: state.voiceTarget.label, value: state.voiceTranscript, evidence: state.voiceTranscript, include: true, errors: [] }];
-      state.voiceActionIndex = 0; state.voicePreview = fromVoiceStop;
-      if (!state.voiceTarget.element?.isConnected) { state.voicePreview = true; renderPanel(); showStatus('El destino ya no está disponible. El texto se conserva para revisarlo.'); return; }
-      if (fromVoiceStop && autoImproveText && !state.textInputMode) {
-        const improved = await improveDictationText();
-        if (!improved) { state.voicePreview = true; renderPanel(); return; }
-      }
-      if (fromVoiceStop && !reviewBeforeApply && !state.textInputMode && state.dictationWriteMode !== 'replace') {
-        await applyVoiceActions(); return;
-      }
-      renderPanel(); showStatus('Revisá el dictado antes de insertarlo en el lugar seleccionado.'); return;
+      const autoApply = fromVoiceStop && !reviewBeforeApply && !state.textInputMode && state.dictationWriteMode !== 'replace';
+      state.voiceAutoProcessing = autoApply;
+      state.voiceAutoPhase = autoImproveText ? 'Mejorando texto…' : 'Insertando dictado…';
+      try {
+        state.voiceTextSource = 'original'; state.voiceCorrectedText = ''; state.voiceUncertainFragments = []; state.voiceImproveError = '';
+        state.voiceActions = [{ field_id: 'dictation-target', label: state.voiceTarget.label, value: state.voiceTranscript, evidence: state.voiceTranscript, include: true, errors: [] }];
+        state.voiceActionIndex = 0; state.voicePreview = fromVoiceStop;
+        if (!state.voiceTarget.element?.isConnected) { state.voicePreview = true; renderPanel(); showStatus('El destino ya no está disponible. El texto se conserva para revisarlo.'); return; }
+        if (fromVoiceStop && autoImproveText && !state.textInputMode) {
+          const improved = await improveDictationText();
+          if (!improved) { state.voicePreview = true; renderPanel(); return; }
+        }
+        if (autoApply) {
+          await applyVoiceActions(); return;
+        }
+        renderPanel(); showStatus('Revisá el dictado antes de insertarlo en el lugar seleccionado.'); return;
+      } finally { state.voiceAutoProcessing = false; state.voiceAutoPhase = ''; renderPanel(); }
     }
     if (state.voiceTarget && !state.voiceTarget.element.isConnected) { showStatus('El destino ya no está disponible. Seleccionalo de nuevo.'); return; }
     if (state.voiceTarget?.kind === 'form') { state.scopeRoot = state.voiceTarget.element; state.scopeElements = state.voiceTarget.elements || null; state.frameScope = 'top'; }
@@ -2811,6 +2810,7 @@
       if (!actions[0].value.trim()) { showStatus('Escribí el texto que querés insertar.'); return; }
       if (state.dictationWriteMode === 'replace' && !state.dictationReplaceConfirmed) { showStatus('Confirmá el reemplazo de todo el contenido antes de aplicar.'); return; }
       state.voiceBusy = true;
+      if (state.voiceAutoProcessing) state.voiceAutoPhase = 'Insertando dictado…';
       showStatus('Insertando el dictado…'); renderPanel();
       let result;
       try { result = state.voiceTarget.googleDocs ? await insertGoogleDocsDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode) : insertDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode); }
@@ -2896,7 +2896,7 @@
         <div class="body">
           ${!state.settingsMode && !state.textInputMode && (state.voiceMode || state.listening) ? `<section class="microphone-info" data-microphone-notices aria-label="Avisos del micrófono" ${state.microphoneError || state.microphoneNotice ? '' : 'hidden'}><p data-microphone-error role="alert" ${state.microphoneError ? '' : 'hidden'}>${escapeHtml(state.microphoneError)}</p><p data-microphone-notice role="status" ${state.microphoneNotice ? '' : 'hidden'}>${escapeHtml(state.microphoneNotice)}</p></section>` : ''}
           ${state.settingsMode ? renderSettings() : state.voiceMode ? renderVoice() : state.previewMode ? renderPreview() : renderCarousel()}
-          <div class="status" data-status role="status" ${!state.statusMessage || (state.voiceMode && !state.settingsMode && !state.textInputMode && state.listening && /^(Escuchando|Iniciando micrófono\.)/.test(state.statusMessage)) ? 'hidden' : ''}>
+          <div class="status" data-status role="status" ${!state.statusMessage || state.voiceAutoProcessing || (state.voiceMode && !state.settingsMode && !state.textInputMode && state.listening && /^(Escuchando|Iniciando micrófono\.)/.test(state.statusMessage)) ? 'hidden' : ''}>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7h.01"></path></svg>
             <span data-status-text>${escapeHtml(state.statusMessage)}</span>
           </div>
@@ -3378,7 +3378,7 @@
       state.voicePreview = true; renderPanel();
     });
     state.shadow.querySelector('[data-action="voice-preview-back"]')?.addEventListener('click', () => { state.voicePreview = false; renderPanel(); });
-    if (state.voiceBusy) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => { control.disabled = true; });
+    if (state.voiceBusy || state.voiceAutoProcessing) state.shadow.querySelectorAll('button, input, select, textarea').forEach(control => { control.disabled = true; });
     state.shadow.querySelector('[data-action="global-voice"]')?.addEventListener('click', () => {
       if (state.listening) { state.voiceSubmit = true; startVoiceRecognition(); return; }
       if (state.voiceBusy) return;
