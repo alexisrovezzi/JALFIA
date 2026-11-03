@@ -2434,11 +2434,11 @@
   }
 
   function interpretTypedDictation() {
-    if (state.voiceBusy || state.listening) return;
+    if (state.voiceBusy || state.voiceAutoProcessing || state.listening) return;
     if (!state.typedDictation.trim()) { renderPanel(); showStatus('Escribí o pegá el texto que querés usar.'); return; }
     if (!state.voiceTarget) { chooseVoiceDestination(); return; }
     state.voiceTranscript = state.typedDictation;
-    processVoice();
+    return processVoice({ fromTyped: true, reviewBeforeApply: state.reviewBeforeApply === true });
   }
 
   function insertDictation(target, text, mode = 'cursor') {
@@ -2637,7 +2637,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
-      <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
+      <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, al detener el dictado o interpretar texto se aplicarán directamente los cambios válidos, incluso en formularios. Los cambios ambiguos y el reemplazo de todo el contenido requieren confirmación.</small></div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-auto-improve">Mejorar texto automáticamente</label><input id="jalfia-auto-improve" type="checkbox" role="switch" data-action="auto-improve-text" ${state.autoImproveText !== false ? 'checked' : ''} aria-describedby="jalfia-improve-hint"></div><small id="jalfia-improve-hint">Activada por defecto para dictados de voz a un campo de texto. Envía la transcripción al proveedor y modelo de IA configurados y puede consumir uso de API. Con revisión desactivada, inserta la mejora al detener. Si falla o detecta ambigüedades, conserva el texto para revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
       <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
@@ -2751,18 +2751,18 @@
     } finally { state.voiceBusy = false; renderPanel(); }
   }
 
-  async function processVoice({ fromVoiceStop = false, reviewBeforeApply = false, autoImproveText = false } = {}) {
+  async function processVoice({ fromVoiceStop = false, fromTyped = false, reviewBeforeApply = false, autoImproveText = false } = {}) {
     if (state.voiceBusy || !state.voiceTranscript.trim()) { showStatus('No hay dictado para interpretar.'); return; }
     if (fromVoiceStop && state.voiceStopHandled) return;
     if (fromVoiceStop) state.voiceStopHandled = true;
     if (state.voiceTarget?.kind === 'text') {
-      const autoApply = fromVoiceStop && !reviewBeforeApply && !state.textInputMode && state.dictationWriteMode !== 'replace';
+      const autoApply = (fromVoiceStop || fromTyped) && !reviewBeforeApply && state.dictationWriteMode !== 'replace';
       state.voiceAutoProcessing = autoApply;
       state.voiceAutoPhase = autoImproveText ? 'Mejorando texto…' : 'Insertando dictado…';
       try {
         state.voiceTextSource = 'original'; state.voiceCorrectedText = ''; state.voiceUncertainFragments = []; state.voiceImproveError = '';
         state.voiceActions = [{ field_id: 'dictation-target', label: state.voiceTarget.label, value: state.voiceTranscript, evidence: state.voiceTranscript, include: true, errors: [] }];
-        state.voiceActionIndex = 0; state.voicePreview = fromVoiceStop;
+        state.voiceActionIndex = 0; state.voicePreview = fromVoiceStop || fromTyped;
         if (!state.voiceTarget.element?.isConnected) { state.voicePreview = true; renderPanel(); showStatus('El destino ya no está disponible. El texto se conserva para revisarlo.'); return; }
         if (fromVoiceStop && autoImproveText && !state.textInputMode) {
           const improved = await improveDictationText();
@@ -2776,6 +2776,9 @@
     }
     if (state.voiceTarget && !state.voiceTarget.element.isConnected) { showStatus('El destino ya no está disponible. Seleccionalo de nuevo.'); return; }
     if (state.voiceTarget?.kind === 'form') { state.scopeRoot = state.voiceTarget.element; state.scopeElements = state.voiceTarget.elements || null; state.frameScope = 'top'; }
+    const autoApplyForm = (fromVoiceStop || fromTyped) && !reviewBeforeApply;
+    state.voiceAutoProcessing = autoApplyForm;
+    state.voiceAutoPhase = 'Interpretando texto…';
     state.voiceBusy = true;
     showStatus('Interpretando el texto…');
     renderPanel();
@@ -2792,19 +2795,28 @@
         const field = state.fields.find(field => field.id === action.field_id);
         return { ...action, label: field.label, include: !action.needs_confirmation, errors: validateFieldValue(field, action.value) };
       });
-      if (fromVoiceStop && state.voiceActions.length && state.voiceActions.every(action => action.include)) state.voicePreview = true;
+      if (autoApplyForm && state.voiceActions.length) {
+        state.voiceBusy = false; state.voicePreview = true; state.voiceAutoPhase = 'Aplicando cambios…';
+        if (state.voiceActions.some(action => action.include && !action.errors.length)) await applyVoiceActions({ automatic: true });
+        if (state.voiceActions.length) {
+          state.voicePreview = false;
+          showStatus(`${state.voiceActions.length} cambios pendientes por ambigüedades, validaciones o errores de aplicación. Los cambios comprobados se mantienen.`);
+        }
+        return;
+      }
+      if ((fromVoiceStop || fromTyped) && state.voiceActions.length && state.voiceActions.every(action => action.include)) state.voicePreview = true;
       showStatus(state.voiceActions.length ? `${state.voiceActions.length} cambios propuestos. Los demás campos quedarán intactos.` : 'No encontré cambios aplicables en el dictado.');
     } catch (error) {
       state.voiceActions = []; state.voicePreview = false;
       state.textInputMode = true; state.typedDictation = state.voiceTranscript;
       showStatus(`${error.message || 'No pude interpretar el dictado.'} El texto se conserva: podés corregirlo y pulsar Interpretar texto.`);
     }
-    finally { state.voiceBusy = false; renderPanel(); }
+    finally { state.voiceBusy = false; state.voiceAutoProcessing = false; state.voiceAutoPhase = ''; renderPanel(); }
   }
 
-  async function applyVoiceActions() {
+  async function applyVoiceActions({ automatic = false } = {}) {
     if (state.voiceBusy || !state.voicePreview) return;
-    const actions = state.voiceActions.filter(action => action.include);
+    const actions = state.voiceActions.filter(action => action.include && (!automatic || (!action.needs_confirmation && !action.errors.length)));
     if (!actions.length) { showStatus('Selecciona al menos un cambio.'); return; }
     if (state.voiceTarget?.kind === 'text') {
       if (!actions[0].value.trim()) { showStatus('Escribí el texto que querés insertar.'); return; }
@@ -2821,11 +2833,12 @@
       renderPanel(); showStatus(result.ok ? 'Dictado insertado en el lugar seleccionado.' : result.reason); return;
     }
     state.voiceBusy = true;
+    if (automatic) renderPanel();
     let applied = 0;
     try {
       for (const action of actions) {
         scanFields();
-        const field = state.fields.find(field => field.id === action.field_id);
+        const field = state.voiceTarget?.kind === 'form' && !state.voiceTarget.element.isConnected ? null : state.fields.find(field => field.id === action.field_id);
         action.errors = field ? validateFieldValue(field, action.value) : ['El campo ya no está disponible.'];
         if (field && ['select', 'combobox', 'autocomplete'].includes(field.kind) && !field.options.some(option => option.text === action.value || option.value === action.value)) action.errors.push('La opción ya no está disponible. Actualiza el análisis.');
         if (action.errors.length) { action.result = 'No aplicado'; continue; }

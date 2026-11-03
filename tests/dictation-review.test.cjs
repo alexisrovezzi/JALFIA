@@ -66,14 +66,15 @@ test('escritura y acciones manuales nunca heredan la aplicación directa', async
     await s.context.processVoice(); assert.equal(s.writes(), 0); assert.equal(s.state.voiceActions[0].value, 'Juan');
   }
 });
-test('reemplazar todo y formularios mantienen la confirmación aunque la preferencia sea directa', async () => {
+test('reemplazar todo mantiene confirmación y formularios respetan la preferencia directa', async () => {
   const s = setup(); s.state.dictationWriteMode = 'replace';
   await s.context.processVoice({ fromVoiceStop: true, reviewBeforeApply: false }); assert.equal(s.writes(), 0); assert.equal(s.state.voicePreview, true);
   await s.context.applyVoiceActions(); assert.equal(s.writes(), 0);
   s.state.dictationReplaceConfirmed = true; await s.context.applyVoiceActions(); assert.equal(s.input.value, 'Juan');
   const form = setup(); form.state.voiceTarget = { kind: 'form', element: { isConnected: true } };
+  form.state.fields[0].frameId = 1;
   await form.context.processVoice({ fromVoiceStop: true, reviewBeforeApply: false });
-  assert.equal(form.writes(), 0); assert.equal(form.aiCalls(), 1); assert.equal(form.state.voicePreview, true);
+  assert.equal(form.writes(), 1); assert.equal(form.aiCalls(), 1); assert.equal(form.state.voicePreview, false);
 });
 test('formulario ambiguo mantiene la selección explícita antes de confirmar', async () => {
   const s = setup(); s.state.voiceTarget = { kind: 'form', element: { isConnected: true } };

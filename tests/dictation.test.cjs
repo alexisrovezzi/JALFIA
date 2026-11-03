@@ -12,7 +12,7 @@ function setup() {
     closest(selector) { return selector.startsWith('textarea') ? this : null; }
     focus() {} setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   }
-  const listeners = new Map(), statuses = [], state = { fields: [], voiceTranscript: '', voiceActions: [], voiceTarget: null };
+  const listeners = new Map(), statuses = [], state = { fields: [], voiceTranscript: '', voiceActions: [], voiceTarget: null, reviewBeforeApply: true };
   let starts = 0, aiCalls = 0, events = 0;
   const context = {
     location: { hostname: 'example.com', pathname: '/form', origin: 'https://example.com', href: 'https://example.com/form' },
