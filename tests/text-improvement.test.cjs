@@ -120,7 +120,8 @@ test('fondo usa configuración guardada, no expone claves y no llama al proveedo
   const response = await call({ type: 'JALFIA_IMPROVE_TEXT', text: 'hola' }); assert.equal(calls, 1); assert.equal(response.corrected_text, 'Hola.'); assert.equal(response.apiKey, undefined);
   assert.equal(listener({ type: 'JALFIA_IMPROVE_TEXT', text: 'hola' }, { id: 'foreign' }, () => {}), false);
   for (const preference of [undefined, true, false]) {
-    await call({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { autoImproveText: preference, reviewBeforeApply: false } });
+    await call({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { autoImproveText: preference, reviewBeforeApply: false, voiceShowText: preference } });
     assert.equal(saved.jalfiaSettings.autoImproveText, preference !== false); assert.equal(saved.jalfiaSettings.reviewBeforeApply, false);
+    assert.equal(saved.jalfiaSettings.voiceShowText, preference === true);
   }
 });

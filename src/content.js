@@ -96,7 +96,7 @@
   }
 
   function saveSettings() {
-    sendExtensionMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode, reviewBeforeApply: state.reviewBeforeApply, autoImproveText: state.autoImproveText } })
+    sendExtensionMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode, reviewBeforeApply: state.reviewBeforeApply, autoImproveText: state.autoImproveText, voiceShowText: state.voiceShowText } })
       .catch(() => showStatus('No pude guardar los ajustes.'));
   }
 
@@ -129,6 +129,7 @@
     state.darkMode = jalfiaSettings.darkMode === true;
     state.reviewBeforeApply = jalfiaSettings.reviewBeforeApply === true;
     state.autoImproveText = jalfiaSettings.autoImproveText !== false;
+    state.voiceShowText = jalfiaSettings.voiceShowText === true;
     if (state.shadow && !state.minimized && !state.listening) renderPanel();
   }).catch(() => {});
 
@@ -2641,6 +2642,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
+      <div class="setting"><div class="setting-heading"><label for="jalfia-show-recognized">Ver texto reconocido</label><input id="jalfia-show-recognized" type="checkbox" role="switch" data-action="show-recognized" ${state.voiceShowText ? 'checked' : ''} aria-describedby="jalfia-show-recognized-hint"></div><small id="jalfia-show-recognized-hint">Muestra la transcripción y, cuando esté disponible, el texto corregido por IA en el panel de dictado.</small></div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, al detener el dictado o interpretar texto se aplicarán directamente los cambios válidos, incluso en formularios. Los cambios ambiguos y el reemplazo de todo el contenido requieren confirmación.</small></div>
       <div class="setting"><div class="setting-heading"><label for="jalfia-auto-improve">Mejorar texto automáticamente</label><input id="jalfia-auto-improve" type="checkbox" role="switch" data-action="auto-improve-text" ${state.autoImproveText !== false ? 'checked' : ''} aria-describedby="jalfia-improve-hint"></div><small id="jalfia-improve-hint">Activada por defecto para dictados de voz a un campo de texto. Envía la transcripción al proveedor y modelo de IA configurados y puede consumir uso de API. Con revisión desactivada, inserta la mejora al detener. Si falla o detecta ambigüedades, conserva el texto para revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
@@ -2729,7 +2731,6 @@
         <button type="button" data-action="text-input-mode" title="${state.textInputMode ? 'Cambiar a dictado' : 'Cambiar a escritura'}" aria-label="${state.textInputMode ? 'Cambiar a dictado' : 'Cambiar a escritura'}" aria-pressed="${state.textInputMode}" ${state.listening || state.voiceBusy ? 'disabled' : ''}>${state.textInputMode ? microphoneIcon() : 'Aa'}</button>
         <button type="button" data-action="interpret-voice" title="Interpretar nuevamente" aria-label="Interpretar nuevamente" ${!state.voiceTranscript || state.listening || state.voiceBusy ? 'disabled' : ''}>${refreshIcon()}</button>
         <button type="button" data-action="manual-mode" title="Completar manualmente" aria-label="Completar manualmente" ${state.voiceBusy || state.listening ? 'disabled' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z"></path></svg></button>
-        <button type="button" data-action="show-recognized" title="Ver texto reconocido" aria-label="Ver texto reconocido" aria-pressed="${state.voiceShowText}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
       </div>
     </section>`;
   }
@@ -3395,7 +3396,7 @@
     });
     state.shadow.querySelector('[data-action="interpret-voice"]')?.addEventListener('click', processVoice);
     state.shadow.querySelector('[data-action="apply-voice"]')?.addEventListener('click', applyVoiceActions);
-    state.shadow.querySelector('[data-action="show-recognized"]')?.addEventListener('click', () => { state.voiceShowText = !state.voiceShowText; renderPanel(); });
+    state.shadow.querySelector('[data-action="show-recognized"]')?.addEventListener('change', event => { state.voiceShowText = event.target.checked; saveSettings(); });
     state.shadow.querySelector('[data-action="manual-mode"]')?.addEventListener('click', () => { state.voiceMode = false; renderPanel(); });
     state.shadow.querySelector('[data-action="voice-mode"]')?.addEventListener('click', () => { state.voiceMode = true; state.previewMode = false; renderPanel(); });
     state.shadow.querySelectorAll('[data-voice-include]').forEach(input => input.addEventListener('change', () => { state.voiceActions[Number(input.dataset.voiceInclude)].include = input.checked; }));

@@ -36,7 +36,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'JALFIA_GET_UI_SETTINGS') return chrome.storage.local.get('jalfiaSettings');
     if (message.type === 'JALFIA_SAVE_UI_SETTINGS') {
       const prefs = message.settings || {};
-      await chrome.storage.local.set({ jalfiaSettings: { opacity: Math.min(1, Math.max(.55, Number(prefs.opacity) || .96)), darkMode: prefs.darkMode === true, reviewBeforeApply: prefs.reviewBeforeApply === true, autoImproveText: prefs.autoImproveText !== false } });
+      await chrome.storage.local.set({ jalfiaSettings: { opacity: Math.min(1, Math.max(.55, Number(prefs.opacity) || .96)), darkMode: prefs.darkMode === true, reviewBeforeApply: prefs.reviewBeforeApply === true, autoImproveText: prefs.autoImproveText !== false, voiceShowText: prefs.voiceShowText === true } });
       return { ok: true };
     }
     if (message.type === 'JALFIA_OPEN_AI_SETTINGS') { await chrome.runtime.openOptionsPage(); return { ok: true }; }
