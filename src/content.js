@@ -76,6 +76,8 @@
     dictationWriteMode: 'cursor',
     dictationReplaceConfirmed: false,
     darkMode: false,
+    reviewBeforeApply: true,
+    voiceStopHandled: false,
     position: { x: 24, y: 24 },
     size: { width: 430, height: 475 }
   };
@@ -85,7 +87,7 @@
   }
 
   function saveSettings() {
-    sendExtensionMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode } })
+    sendExtensionMessage({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: state.opacity, darkMode: state.darkMode, reviewBeforeApply: state.reviewBeforeApply } })
       .catch(() => showStatus('No pude guardar los ajustes.'));
   }
 
@@ -116,6 +118,7 @@
     if (!jalfiaSettings) return;
     if (Number.isFinite(jalfiaSettings.opacity)) state.opacity = Math.min(1, Math.max(0.55, jalfiaSettings.opacity));
     state.darkMode = jalfiaSettings.darkMode === true;
+    state.reviewBeforeApply = jalfiaSettings.reviewBeforeApply !== false;
     if (state.shadow && !state.minimized && !state.listening) renderPanel();
   }).catch(() => {});
 
@@ -959,6 +962,8 @@
     }
 
     const recognition = new Recognition();
+    const reviewBeforeApply = state.reviewBeforeApply !== false;
+    if (!fieldId) { state.voiceStopHandled = false; state.activeVoiceReview = reviewBeforeApply; }
     state.recognition = recognition;
     state.listening = true;
     state.activeVoiceFieldId = fieldId;
@@ -994,7 +999,7 @@
         renderPanel();
         const submit = state.voiceSubmit;
         state.voiceSubmit = false;
-        if (submit && !failed) processVoice();
+        if (submit && !failed) processVoice({ fromVoiceStop: true, reviewBeforeApply });
       }
       if (state.pendingFocusFieldId) {
         const fieldToFocus = state.pendingFocusFieldId;
@@ -1319,6 +1324,9 @@
       .voice-view { display:flex; flex-direction:column; flex:1; min-height:0; color:var(--ink); }
       .voice-scroll { display:flex; flex-direction:column; align-items:center; gap:16px; flex:1; min-height:0; overflow:auto; padding:20px; }
       .voice-scroll > * { flex-shrink:0; }
+      .dictation-review .global-mic, .dictation-review [data-voice-label] { display:none; }
+      .dictation-review .voice-scroll > h2 { order:-3; }
+      .dictation-review .voice-scroll > .field { order:-2; }
       .voice-scroll.voice-idle { justify-content:safe center; min-height:180px; }
       .voice-toolbar { display:flex; justify-content:center; gap:10px; padding:12px 16px; flex-shrink:0; border-top:1px solid var(--line); }
       .voice-toolbar button { width:42px; height:42px; padding:0; display:grid; place-items:center; color:var(--ink); background:var(--panel); border:1px solid var(--line); }
@@ -2353,6 +2361,7 @@
 
   function insertDictation(target, text, mode = 'cursor') {
     const element = target?.element;
+    if (target?.insertionUncertain) return { ok: false, reason: 'No pude comprobar el intento anterior. Revisá el destino antes de volver a dictar; no se reenviará este texto.' };
     if (!element?.isConnected || element.disabled || element.readOnly || element.closest('[inert], [aria-disabled="true"]')) return { ok: false, reason: 'El destino ya no está disponible. Seleccionalo de nuevo.' };
     const current = element.isContentEditable ? element.innerHTML : element.value;
     if (current !== target.original) return { ok: false, reason: 'El texto del destino cambió. Seleccionalo de nuevo antes de insertar.' };
@@ -2362,16 +2371,30 @@
       const range = target.range.cloneRange();
       if (mode !== 'cursor') { range.selectNodeContents(element); if (mode === 'append') range.collapse(false); }
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      const before = document.createRange(); before.selectNodeContents(element); before.setEnd(range.startContainer, range.startOffset);
+      const after = document.createRange(); after.selectNodeContents(element); after.setStart(range.endContainer, range.endOffset);
+      const expected = before.toString() + text + after.toString();
       // Usar la edición nativa preserva el formato y el historial de deshacer.
-      if (!document.execCommand('insertText', false, text)) return { ok: false, reason: 'Este editor no admite la inserción de texto. No se aplicó el dictado.' };
+      target.insertionUncertain = true;
+      if (!document.execCommand('insertText', false, text)) {
+        if (element.innerHTML === target.original) target.insertionUncertain = false;
+        return { ok: false, reason: target.insertionUncertain ? 'No pude comprobar la inserción. Revisá el editor antes de volver a dictar.' : 'Este editor no admite la inserción de texto. No se aplicó el dictado.' };
+      }
+      if (element.textContent !== expected && element.innerText !== expected) return { ok: false, reason: 'No pude comprobar la inserción. Revisá el editor antes de volver a dictar; el texto se conserva.' };
+      target.insertionUncertain = false;
     } else {
       const start = mode === 'replace' ? 0 : mode === 'append' ? target.original.length : target.start;
       const end = mode === 'replace' || mode === 'append' ? target.original.length : target.end;
       const value = target.original.slice(0, start) + text + target.original.slice(end);
       const setter = Object.getOwnPropertyDescriptor(element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set;
+      target.insertionUncertain = true;
       if (setter) setter.call(element, value); else element.value = value;
       dispatchInputEvents(element);
-      if (element.value !== value) return { ok: false, reason: 'El campo no aceptó el texto dictado.' };
+      if (element.value !== value) {
+        if (element.value === target.original) target.insertionUncertain = false;
+        return { ok: false, reason: 'No pude comprobar que el campo aceptó el texto. Revisá el destino; el dictado se conserva.' };
+      }
+      target.insertionUncertain = false;
       try { element.setSelectionRange(start + text.length, start + text.length); } catch {}
     }
     return { ok: true };
@@ -2532,6 +2555,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
+      <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply !== false ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
       <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
       <div class="setting setting-heading"><label for="jalfia-dark">Modo oscuro</label><input id="jalfia-dark" type="checkbox" role="switch" data-action="dark-mode" ${state.darkMode ? 'checked' : ''}></div>
@@ -2588,25 +2612,26 @@
       return `<article class="field setting">
       <div class="field-head"><div class="field-title"><span class="index">${index + 1}</span><div class="field-name"><label>${escapeHtml(action.label)}</label>${field ? `<span class="badge">${escapeHtml(fieldTypeLabel(field))}</span>` : ''}</div></div></div>
       ${state.voicePreview ? '' : `<label><input type="checkbox" data-voice-include="${index}" ${action.include ? 'checked' : ''}> Incluir este cambio ${action.needs_confirmation ? '· Requiere tu confirmación' : ''}</label>`}
-      <div>${escapeHtml(action.value === 'true' ? 'Sí' : action.value === 'false' ? 'No' : field?.displayFormat === 'DD/MM/YYYY' && /^\d{4}-\d{2}-\d{2}$/.test(action.value) ? action.value.split('-').reverse().join('/') : action.value)}</div>
+      ${state.voicePreview && state.voiceTarget?.kind === 'text' ? `<label for="jalfia-dictation-preview">Texto a insertar</label><textarea id="jalfia-dictation-preview" data-dictation-preview rows="5" ${state.voiceBusy ? 'disabled' : ''}>${escapeHtml(action.value)}</textarea>` : `<div>${escapeHtml(action.value === 'true' ? 'Sí' : action.value === 'false' ? 'No' : field?.displayFormat === 'DD/MM/YYYY' && /^\d{4}-\d{2}-\d{2}$/.test(action.value) ? action.value.split('-').reverse().join('/') : action.value)}</div>`}
       <small>Dijiste: ${escapeHtml(action.evidence)}</small>
       ${action.errors.map(error => `<span class="validation-error">${escapeHtml(error)}</span>`).join('')}
       ${action.result ? `<span>${escapeHtml(action.result)}</span>` : ''}
     </article>`; }).join('');
-    return `<section class="voice-view"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
+    return `<section class="voice-view ${state.voicePreview && state.voiceTarget?.kind === 'text' ? 'dictation-review' : ''}"><div class="voice-scroll ${state.voiceActions.length ? '' : 'voice-idle'}">
       ${state.textInputMode ? `<div class="setting"><label for="jalfia-typed-dictation">Modo escritura: escribir o pegar texto</label>
         <textarea id="jalfia-typed-dictation" data-typed-dictation rows="4" maxlength="20000" placeholder="Escribí o pegá el texto que querés usar…" ${state.voiceBusy ? 'disabled' : ''}>${escapeHtml(state.typedDictation)}</textarea>
         <button class="primary" type="button" data-action="interpret-typed" ${state.voiceBusy ? 'disabled' : ''}>${state.voiceTarget ? 'Interpretar texto' : 'Elegir destino y continuar'}</button>
         ${state.voiceTarget ? '<button class="secondary" type="button" data-action="choose-text-destination">Cambiar destino</button>' : ''}
       </div>` : `<button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>`}
       ${state.voiceTarget ? `<small>${state.voiceTarget.kind === 'text' ? `Dictado en: ${escapeHtml(state.voiceTarget.label)}` : 'Completar el formulario seleccionado'}</small>` : ''}
+      ${!state.textInputMode ? `<small data-review-behavior>${state.voiceTarget?.kind === 'form' || state.dictationWriteMode === 'replace' || (state.listening ? state.activeVoiceReview !== false : state.reviewBeforeApply !== false) ? 'Se revisará antes de aplicar' : 'Se insertará al detener'}</small>` : ''}
       ${state.voiceTarget?.kind === 'text' && state.voiceActions.length ? `<div class="setting"><label for="jalfia-write-mode">Cómo escribir el dictado</label><select id="jalfia-write-mode" data-action="dictation-write-mode" ${state.voiceBusy ? 'disabled' : ''}>
         <option value="cursor" ${state.dictationWriteMode === 'cursor' ? 'selected' : ''}>Insertar en el cursor</option>
         <option value="append" ${state.dictationWriteMode === 'append' ? 'selected' : ''}>Agregar al final</option>
         <option value="replace" ${state.dictationWriteMode === 'replace' ? 'selected' : ''}>Reemplazar todo el contenido</option>
       </select><small>${state.dictationWriteMode === 'replace' ? 'Se reemplazará todo el texto del destino seleccionado.' : state.dictationWriteMode === 'append' ? 'Se conservará el texto existente y se añadirá el dictado al final.' : 'Se conserva el texto existente; solo se reemplaza el fragmento seleccionado.'}</small>
       ${state.dictationWriteMode === 'replace' ? `<label><input type="checkbox" data-action="confirm-dictation-replace" ${state.dictationReplaceConfirmed ? 'checked' : ''}> Confirmo reemplazar todo el contenido de este destino</label>` : ''}</div>` : ''}
-      ${state.voiceActions.length ? `<h2>${state.voicePreview ? 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : ''}
+      ${state.voiceActions.length ? `<h2>${state.voicePreview ? state.voiceTarget?.kind === 'text' ? 'Vista previa del dictado' : 'Vista previa de cambios seleccionados' : 'Revisá los cambios propuestos'}</h2>${state.voicePreview ? '' : `<small>Cambio ${state.voiceActionIndex + 1} de ${state.voiceActions.length}</small>`}${actions}` : ''}
       ${state.voiceShowText ? `<div class="recognized-text"><strong>Texto reconocido</strong><p data-transcript>${escapeHtml(state.voiceTranscript || 'Todavía no hay texto reconocido.')}</p>${state.voiceCorrectedText ? `<strong>Texto corregido por IA</strong><p>${escapeHtml(state.voiceCorrectedText)}</p>` : ''}</div>` : ''}
       </div>
       ${state.voiceActions.length ? `<div class="footer ${state.voicePreview ? '' : 'footer-navigation'}">
@@ -2622,14 +2647,20 @@
     </section>`;
   }
 
-  async function processVoice() {
+  async function processVoice({ fromVoiceStop = false, reviewBeforeApply = true } = {}) {
     if (state.voiceBusy || !state.voiceTranscript.trim()) { showStatus('No hay dictado para interpretar.'); return; }
-    if (state.voiceTarget && !state.voiceTarget.element.isConnected) { showStatus('El destino ya no está disponible. Seleccionalo de nuevo.'); return; }
+    if (fromVoiceStop && state.voiceStopHandled) return;
+    if (fromVoiceStop) state.voiceStopHandled = true;
     if (state.voiceTarget?.kind === 'text') {
       state.voiceActions = [{ field_id: 'dictation-target', label: state.voiceTarget.label, value: state.voiceTranscript, evidence: state.voiceTranscript, include: true, errors: [] }];
-      state.voiceActionIndex = 0; state.voicePreview = false;
+      state.voiceActionIndex = 0; state.voicePreview = fromVoiceStop;
+      if (!state.voiceTarget.element?.isConnected) { state.voicePreview = true; renderPanel(); showStatus('El destino ya no está disponible. El texto se conserva para revisarlo.'); return; }
+      if (fromVoiceStop && !reviewBeforeApply && !state.textInputMode && state.dictationWriteMode !== 'replace') {
+        await applyVoiceActions(); return;
+      }
       renderPanel(); showStatus('Revisá el dictado antes de insertarlo en el lugar seleccionado.'); return;
     }
+    if (state.voiceTarget && !state.voiceTarget.element.isConnected) { showStatus('El destino ya no está disponible. Seleccionalo de nuevo.'); return; }
     if (state.voiceTarget?.kind === 'form') { state.scopeRoot = state.voiceTarget.element; state.scopeElements = state.voiceTarget.elements || null; state.frameScope = 'top'; }
     state.voiceBusy = true;
     showStatus('Interpretando el texto…');
@@ -2647,6 +2678,7 @@
         const field = state.fields.find(field => field.id === action.field_id);
         return { ...action, label: field.label, include: !action.needs_confirmation, errors: validateFieldValue(field, action.value) };
       });
+      if (fromVoiceStop && state.voiceActions.length && state.voiceActions.every(action => action.include)) state.voicePreview = true;
       showStatus(state.voiceActions.length ? `${state.voiceActions.length} cambios propuestos. Los demás campos quedarán intactos.` : 'No encontré cambios aplicables en el dictado.');
     } catch (error) {
       state.voiceActions = []; state.voicePreview = false;
@@ -2661,8 +2693,10 @@
     const actions = state.voiceActions.filter(action => action.include);
     if (!actions.length) { showStatus('Selecciona al menos un cambio.'); return; }
     if (state.voiceTarget?.kind === 'text') {
+      if (!actions[0].value.trim()) { showStatus('Escribí el texto que querés insertar.'); return; }
       if (state.dictationWriteMode === 'replace' && !state.dictationReplaceConfirmed) { showStatus('Confirmá el reemplazo de todo el contenido antes de aplicar.'); return; }
       state.voiceBusy = true;
+      showStatus('Insertando el dictado…'); renderPanel();
       let result;
       try { result = state.voiceTarget.googleDocs ? await insertGoogleDocsDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode) : insertDictation(state.voiceTarget, actions[0].value, state.dictationWriteMode); }
       catch (error) { result = { ok: false, reason: error.message || 'No se pudo insertar el dictado.' }; }
@@ -3155,6 +3189,13 @@
   }
 
   function wirePanelEvents() {
+    state.shadow.querySelector('[data-action="review-before-apply"]')?.addEventListener('change', event => {
+      state.reviewBeforeApply = event.target.checked; saveSettings();
+    });
+    state.shadow.querySelector('[data-dictation-preview]')?.addEventListener('input', event => {
+      const action = state.voiceActions.find(action => action.include);
+      if (action) { action.value = event.target.value; action.errors = []; }
+    });
     wireAbout();
     wireUpdateDialog();
     state.shadow.querySelector('[data-action="about"]')?.addEventListener('click', openAbout);
