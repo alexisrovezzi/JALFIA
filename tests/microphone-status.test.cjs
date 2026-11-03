@@ -87,10 +87,10 @@ test('error al iniciar, API ausente y agotamiento de reintentos quedan detenidos
   assert.equal(s.state.microphoneStatus, 'Dictado detenido'); assert.equal(s.state.listening, false); assert.equal(s.listeners.size, 0); assert.match(s.state.microphoneError, /conexión/);
 });
 test('la altura contempla información de audio solo cuando está visible', () => {
-  const content = { style: {}, getBoundingClientRect: () => ({ height: 70 }) };
+  const content = { style: {}, getBoundingClientRect: () => ({ height: 200 }) };
   const state = { fields: [], voiceMode: true, size: {}, panel: { style: {} }, shadow: { querySelector: selector => selector.includes('.carousel') ? content : { getBoundingClientRect: () => ({ height: selector === '.microphone-info' ? 80 : 60 }) } } };
   const context = { state, window: { innerHeight: 900 }, visibleFields: () => [], keepPanelInViewport() {} };
   vm.createContext(context); vm.runInContext(source.slice(source.indexOf('  function panelMinimumHeight('), source.indexOf('  function applyExpandedHostSize(')), context);
-  context.recalculatePanelSize(); assert.equal(state.panel.style.height, '332px');
-  state.textInputMode = true; context.recalculatePanelSize(); assert.equal(state.panel.style.height, '252px');
+  context.recalculatePanelSize(); assert.equal(state.panel.style.height, '462px');
+  state.textInputMode = true; context.recalculatePanelSize(); assert.equal(state.panel.style.height, '382px');
 });

@@ -1393,7 +1393,7 @@
 
       .settings { padding: 16px; display: grid; gap: 18px; overflow: auto; flex: 1; align-content: start; }
       .voice-view { display:flex; flex-direction:column; flex:1; min-height:0; color:var(--ink); }
-      .voice-scroll { display:flex; flex-direction:column; align-items:center; gap:16px; flex:1; min-height:0; overflow:auto; padding:20px; }
+      .voice-scroll { display:flex; flex-direction:column; align-items:center; gap:12px; flex:1; min-height:0; overflow:auto; padding:16px; }
       .voice-scroll > * { flex-shrink:0; }
       .dictation-loader { width:48px; height:48px; border:4px solid var(--line); border-top-color:var(--blue); border-radius:50%; animation:dictation-spin 0.8s linear infinite; }
       @keyframes dictation-spin { to { transform:rotate(360deg); } }
@@ -1419,9 +1419,9 @@
       .voice-view .setting { width:100%; flex-shrink:0; }
       .voice-view .setting input[type="checkbox"] { width:18px; min-height:18px; vertical-align:middle; }
       .voice-view p { margin:0; width:100%; text-align:center; overflow-wrap:anywhere; }
-      .global-mic { width:112px; height:112px; flex-shrink:0; display:grid; place-items:center; border-radius:50%; color:white; background:linear-gradient(135deg,var(--blue),var(--cyan)); box-shadow:0 12px 28px #2563eb33; }
+      .global-mic { width:88px; height:88px; flex-shrink:0; display:grid; place-items:center; border-radius:50%; color:white; background:linear-gradient(135deg,var(--blue),var(--cyan)); box-shadow:0 12px 28px #2563eb33; }
       .global-mic.recording { background:#dc2626; }
-      .global-mic svg { width:48px; height:48px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+      .global-mic svg { width:40px; height:40px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
       .voice-view .primary { flex:0 0 auto; min-height:42px; padding:10px 16px; }
       .settings h2 { margin: 0; color: var(--ink); font-size: 16px; }
       .setting { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
@@ -3214,7 +3214,9 @@
   }
 
   function panelMinimumHeight() {
-    return state.settingsMode ? 300 : visibleFields().length ? 475 : 240;
+    if (state.settingsMode) return 300;
+    if (state.voiceMode) return state.textInputMode ? 350 : 320;
+    return visibleFields().length ? 475 : 240;
   }
 
   function schedulePanelSize() {
@@ -3600,7 +3602,7 @@
     if (!state.panel) return;
     state.stopVoice?.();
     const rect = state.panel.getBoundingClientRect();
-    state.size = { width: Math.max(430, rect.width), height: Math.max(475, rect.height) };
+    state.size = { width: Math.max(430, rect.width), height: Math.max(panelMinimumHeight(), rect.height) };
     updateDraftValues();
     state.minimized = true;
     state.previewMode = false;
