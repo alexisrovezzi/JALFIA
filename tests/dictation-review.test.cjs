@@ -32,7 +32,7 @@ function setup() {
   return { context, state, input, messages, writes: () => writes, aiCalls: () => aiCalls, timers };
 }
 test('revisión abre directamente la propuesta editable y permite aplicar una edición', async () => {
-  const s = setup(); await s.context.processVoice({ fromVoiceStop: true });
+  const s = setup(); await s.context.processVoice({ fromVoiceStop: true, reviewBeforeApply: true });
   assert.equal(s.state.voicePreview, true); assert.equal(s.input.value, 'Hola mundo'); assert.equal(s.writes(), 0);
   s.state.voiceActions[0].value = 'María'; await s.context.applyVoiceActions();
   assert.equal(s.input.value, 'Hola María'); assert.equal(s.state.voiceTranscript, ''); assert.equal(s.aiCalls(), 0);
@@ -49,6 +49,15 @@ test('la preferencia se fija al iniciar el dictado, incluso si cambia antes de d
     s.state.recognition.onresult({ results: [Object.assign([{ transcript: 'Juan' }], { isFinal: true })] });
     s.state.voiceSubmit = true; s.context.startVoiceRecognition(); await Promise.resolve();
     assert.equal(s.writes(), review ? 0 : 1); assert.equal(s.state.voicePreview, review);
+  }
+});
+test('sin preferencia guardada se inserta al detener; una elección explícita de revisión se respeta', async () => {
+  for (const preference of [undefined, null, false, true]) {
+    const s = setup(); s.state.reviewBeforeApply = preference;
+    s.context.startVoiceRecognition();
+    s.state.recognition.onresult({ results: [Object.assign([{ transcript: 'Juan' }], { isFinal: true })] });
+    s.state.voiceSubmit = true; s.context.startVoiceRecognition(); await Promise.resolve();
+    assert.equal(s.writes(), preference === true ? 0 : 1);
   }
 });
 test('escritura y acciones manuales nunca heredan la aplicación directa', async () => {
@@ -101,12 +110,12 @@ test('cancelar y un error de reconocimiento no disparan aplicación automática'
     await Promise.resolve(); assert.equal(s.writes(), 0);
   }
 });
-test('preferencia se guarda normalizada y las instalaciones previas mantienen revisión', async () => {
+test('preferencia se guarda normalizada y el valor por defecto es desactivado', async () => {
   let listener, saved;
   const context = { importScripts() {}, chrome: { runtime: { id: 'test', getURL: name => name, onMessage: { addListener: fn => { listener = fn; } } }, action: { onClicked: { addListener() {} } }, storage: { local: { setAccessLevel: async () => {}, set: async data => { saved = data; } } } } };
   vm.createContext(context); vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/background.js'), 'utf8'), context);
   for (const preference of [undefined, true, false]) {
     await new Promise(resolve => listener({ type: 'JALFIA_SAVE_UI_SETTINGS', settings: { opacity: .8, darkMode: true, reviewBeforeApply: preference } }, { id: 'test' }, resolve));
-    assert.equal(saved.jalfiaSettings.reviewBeforeApply, preference !== false); assert.equal(saved.jalfiaSettings.darkMode, true); assert.equal(saved.jalfiaSettings.opacity, .8);
+    assert.equal(saved.jalfiaSettings.reviewBeforeApply, preference === true); assert.equal(saved.jalfiaSettings.darkMode, true); assert.equal(saved.jalfiaSettings.opacity, .8);
   }
 });

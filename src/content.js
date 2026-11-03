@@ -76,7 +76,7 @@
     dictationWriteMode: 'cursor',
     dictationReplaceConfirmed: false,
     darkMode: false,
-    reviewBeforeApply: true,
+    reviewBeforeApply: false,
     voiceStopHandled: false,
     position: { x: 24, y: 24 },
     size: { width: 430, height: 475 }
@@ -118,7 +118,7 @@
     if (!jalfiaSettings) return;
     if (Number.isFinite(jalfiaSettings.opacity)) state.opacity = Math.min(1, Math.max(0.55, jalfiaSettings.opacity));
     state.darkMode = jalfiaSettings.darkMode === true;
-    state.reviewBeforeApply = jalfiaSettings.reviewBeforeApply !== false;
+    state.reviewBeforeApply = jalfiaSettings.reviewBeforeApply === true;
     if (state.shadow && !state.minimized && !state.listening) renderPanel();
   }).catch(() => {});
 
@@ -962,7 +962,7 @@
     }
 
     const recognition = new Recognition();
-    const reviewBeforeApply = state.reviewBeforeApply !== false;
+    const reviewBeforeApply = state.reviewBeforeApply === true;
     if (!fieldId) { state.voiceStopHandled = false; state.activeVoiceReview = reviewBeforeApply; }
     state.recognition = recognition;
     state.listening = true;
@@ -2555,7 +2555,7 @@
     const useful = memories.filter(item => item.memory.fields.length);
     return `<form class="settings" aria-label="Ajustes de JALFIA">
       <h2>Ajustes</h2>
-      <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply !== false ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
+      <div class="setting"><div class="setting-heading"><label for="jalfia-review">Revisar antes de aplicar</label><input id="jalfia-review" type="checkbox" role="switch" data-action="review-before-apply" ${state.reviewBeforeApply === true ? 'checked' : ''} aria-describedby="jalfia-review-hint"></div><small id="jalfia-review-hint">Si desactivás esta opción, el texto se insertará en el destino seleccionado al detener el dictado. Los formularios y el reemplazo de todo el contenido mantienen la revisión.</small></div>
       <section class="setting about" id="jalfia-about" tabindex="-1">${renderAbout()}</section>
       <div class="setting"><h2>Inteligencia artificial</h2><p>Configura el proveedor, servidor, clave y modelo, y prueba la conexión.</p><button class="primary" type="button" data-action="configure-ai">Configurar IA</button></div>
       <div class="setting setting-heading"><label for="jalfia-dark">Modo oscuro</label><input id="jalfia-dark" type="checkbox" role="switch" data-action="dark-mode" ${state.darkMode ? 'checked' : ''}></div>
@@ -2624,7 +2624,7 @@
         ${state.voiceTarget ? '<button class="secondary" type="button" data-action="choose-text-destination">Cambiar destino</button>' : ''}
       </div>` : `<button class="global-mic" type="button" data-action="global-voice" title="${state.voiceTranscript ? 'Grabar un nuevo dictado reemplazando el anterior' : 'Comenzar dictado'}" aria-label="Comenzar dictado" ${state.voiceBusy ? 'disabled' : ''}>${microphoneIcon()}</button><strong data-voice-label>${state.voiceBusy ? 'Interpretando…' : 'Tocá para hablar'}</strong>`}
       ${state.voiceTarget ? `<small>${state.voiceTarget.kind === 'text' ? `Dictado en: ${escapeHtml(state.voiceTarget.label)}` : 'Completar el formulario seleccionado'}</small>` : ''}
-      ${!state.textInputMode ? `<small data-review-behavior>${state.voiceTarget?.kind === 'form' || state.dictationWriteMode === 'replace' || (state.listening ? state.activeVoiceReview !== false : state.reviewBeforeApply !== false) ? 'Se revisará antes de aplicar' : 'Se insertará al detener'}</small>` : ''}
+      ${!state.textInputMode ? `<small data-review-behavior>${state.voiceTarget?.kind === 'form' || state.dictationWriteMode === 'replace' || (state.listening ? state.activeVoiceReview === true : state.reviewBeforeApply === true) ? 'Se revisará antes de aplicar' : 'Se insertará al detener'}</small>` : ''}
       ${state.voiceTarget?.kind === 'text' && state.voiceActions.length ? `<div class="setting"><label for="jalfia-write-mode">Cómo escribir el dictado</label><select id="jalfia-write-mode" data-action="dictation-write-mode" ${state.voiceBusy ? 'disabled' : ''}>
         <option value="cursor" ${state.dictationWriteMode === 'cursor' ? 'selected' : ''}>Insertar en el cursor</option>
         <option value="append" ${state.dictationWriteMode === 'append' ? 'selected' : ''}>Agregar al final</option>
@@ -2647,7 +2647,7 @@
     </section>`;
   }
 
-  async function processVoice({ fromVoiceStop = false, reviewBeforeApply = true } = {}) {
+  async function processVoice({ fromVoiceStop = false, reviewBeforeApply = false } = {}) {
     if (state.voiceBusy || !state.voiceTranscript.trim()) { showStatus('No hay dictado para interpretar.'); return; }
     if (fromVoiceStop && state.voiceStopHandled) return;
     if (fromVoiceStop) state.voiceStopHandled = true;
